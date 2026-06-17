@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { TripMap, type TripReportMarker } from "@/components/TripMap";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { CATEGORIAS, type CategoriaKey } from "@/lib/categorias";
+import { computeNavigationStats } from "@/lib/navigation";
 import { payTolls } from "@/lib/pay-toll.functions";
 import {
   fetchDrivingRoute,
@@ -105,6 +106,7 @@ export function DriveMode() {
   const [tollDialogOpen, setTollDialogOpen] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [tripReports, setTripReports] = useState<TripReportMarker[]>([]);
+  const [navClock, setNavClock] = useState(0);
 
   const phaseRef = useRef(phase);
   const coordsRef = useRef(geo.coords);
@@ -119,6 +121,17 @@ export function DriveMode() {
   coordsRef.current = geo.coords;
   tripIdRef.current = tripId;
   submittingRef.current = submitting;
+
+  useEffect(() => {
+    if (phase !== "driving" || !route || !geo.coords) return;
+    const id = window.setInterval(() => setNavClock((t) => t + 1), 15000);
+    return () => clearInterval(id);
+  }, [phase, route, geo.coords]);
+
+  const navStats = useMemo(() => {
+    if (phase !== "driving" || !route || !geo.coords) return null;
+    return computeNavigationStats(geo.coords, route, geo.coords.speed, destination);
+  }, [phase, route, geo.coords, destination, navClock]);
 
   const { data: vehicles } = useQuery({
     queryKey: ["vehicles"],
@@ -493,7 +506,7 @@ export function DriveMode() {
       <TripMap
         coords={geo.coords}
         route={route}
-        tracking={geo.tracking && phase === "driving"}
+        navigating={phase === "driving"}
         reports={tripReports}
         tolls={tolls}
       />
@@ -575,15 +588,7 @@ export function DriveMode() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground shadow">
                 GPS · ±{Math.round(geo.coords.accuracy ?? 0)}m
-                {geo.coords.speed != null && geo.coords.speed > 0 && (
-                  <> · {(geo.coords.speed * 3.6).toFixed(0)} km/h</>
-                )}
               </span>
-              {phase === "driving" && route && (
-                <span className="rounded-full bg-card px-3 py-1 text-xs font-medium shadow">
-                  {formatDistance(route.distanceMeters)} · {formatDuration(route.durationSeconds)}
-                </span>
-              )}
               {phase === "driving" && (
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-medium shadow ${
@@ -612,6 +617,42 @@ export function DriveMode() {
               )}
             </div>
           )}
+
+          {phase === "driving" && route && navStats && (
+            <div className="rounded-2xl bg-card/95 p-3 shadow-lg backdrop-blur">
+              <div className="flex items-center gap-4">
+                <div className="shrink-0">
+                  <p className="font-display text-3xl font-bold tabular-nums leading-none text-primary">
+                    {navStats.arrivalTime}
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    chegada prevista
+                  </p>
+                </div>
+                <div className="h-11 w-px shrink-0 bg-border" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                    <p className="text-lg font-bold tabular-nums">
+                      {formatDuration(navStats.remainingSeconds)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      · {formatDistance(navStats.remainingMeters)}
+                    </p>
+                    {geo.coords?.speed != null && geo.coords.speed > 0.5 && (
+                      <p className="text-sm text-muted-foreground">
+                        · {(geo.coords.speed * 3.6).toFixed(0)} km/h
+                      </p>
+                    )}
+                  </div>
+                  {destination && (
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      → {destination.label.split(",").slice(0, 2).join(",")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </header>
 
         <div className="flex-1" />
@@ -638,15 +679,10 @@ export function DriveMode() {
           </div>
         )}
 
-        {phase === "driving" && destination && (
-          <div className="pointer-events-auto mx-3 mb-4 rounded-2xl border bg-card/95 p-4 shadow-2xl backdrop-blur-xl">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Destino</p>
-            <p className="font-medium leading-snug">{destination.label.split(",").slice(0, 2).join(",")}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{micLabel}</p>
-            {tripReports.length > 0 && (
-              <p className="mt-1 text-xs text-primary">{tripReports.length} reporte(s) nesta viagem no mapa</p>
-            )}
-            {lastVoice && <p className="mt-1 text-sm italic">Último: &quot;{lastVoice}&quot;</p>}
+        {phase === "driving" && lastVoice && (
+          <div className="pointer-events-auto mx-3 mb-2 rounded-xl border bg-card/90 px-3 py-2 shadow-lg backdrop-blur">
+            <p className="text-xs text-muted-foreground">Último comando</p>
+            <p className="text-sm italic">&quot;{lastVoice}&quot;</p>
           </div>
         )}
       </div>

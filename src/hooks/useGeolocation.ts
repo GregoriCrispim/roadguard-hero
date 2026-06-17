@@ -10,8 +10,8 @@ export type GeoCoords = {
 
 const DEFAULT_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
-  maximumAge: 3000,
-  timeout: 20000,
+  maximumAge: 500,
+  timeout: 15000,
 };
 
 export function useGeolocation(options: PositionOptions = DEFAULT_OPTIONS) {

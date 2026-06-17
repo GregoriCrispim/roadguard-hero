@@ -9,7 +9,7 @@ import { TripMap, type TripReportMarker } from "@/components/TripMap";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { CATEGORIAS, type CategoriaKey } from "@/lib/categorias";
-import { computeNavigationStats } from "@/lib/navigation";
+import { computeNavigationStats, distanceBetweenMeters, offRouteDistanceMeters } from "@/lib/navigation";
 import { payTolls } from "@/lib/pay-toll.functions";
 import {
   fetchDrivingRoute,
@@ -116,11 +116,18 @@ export function DriveMode() {
   const handleVoiceRef = useRef<(text: string) => void>(() => {});
   const autoGpsStarted = useRef(false);
   const bootSynced = useRef(false);
+  const destinationRef = useRef(destination);
+  const routeRef = useRef(route);
+  const lastRecalcPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastRecalcAtRef = useRef(0);
+  const recalcInFlightRef = useRef(false);
 
   phaseRef.current = phase;
   coordsRef.current = geo.coords;
   tripIdRef.current = tripId;
   submittingRef.current = submitting;
+  destinationRef.current = destination;
+  routeRef.current = route;
 
   useEffect(() => {
     if (phase !== "driving" || !route || !geo.coords) return;
@@ -190,6 +197,112 @@ export function DriveMode() {
       saveTrip(stored);
     },
     [],
+  );
+
+  const applyRoute = useCallback(
+    async (
+      dest: GeocodeResult,
+      from: { lat: number; lng: number },
+      opts: { silent?: boolean; isNewTrip?: boolean } = {},
+    ) => {
+      const { silent = false, isNewTrip = false } = opts;
+      const isUpdate = !!tripIdRef.current && phaseRef.current === "driving" && !isNewTrip;
+
+      if (!silent) setRouting(true);
+
+      try {
+        const r = await fetchDrivingRoute(from, dest);
+        const tollData = calculateTollsAlongRoute(r.coordinates, r.distanceMeters);
+        const id = tripIdRef.current ?? crypto.randomUUID();
+        const expiresAt = new Date(createTripExpiry(r.durationSeconds)).toISOString();
+        const existing = loadTrip();
+        const keepReportIds = isUpdate && existing?.tripId === id ? existing.reportIds : [];
+
+        const { data: u } = await supabase.auth.getUser();
+        if (!u.user) throw new Error("Sessão expirada");
+
+        const payload = {
+          destination_label: dest.label,
+          destination_lat: dest.lat,
+          destination_lng: dest.lng,
+          route_coordinates: r.coordinates,
+          distance_meters: r.distanceMeters,
+          duration_seconds: Math.round(r.durationSeconds),
+          toll_total_cents: tollData.totalCents,
+          toll_details: tollData.tolls,
+          status: "active" as const,
+          expires_at: expiresAt,
+        };
+
+        if (tripIdRef.current) {
+          const { error } = await supabase.from("trips").update(payload).eq("id", id);
+          if (error) console.warn("Falha ao salvar viagem:", error.message);
+        } else {
+          const { error } = await supabase.from("trips").insert({ id, user_id: u.user.id, ...payload });
+          if (error) console.warn("Falha ao salvar viagem:", error.message);
+          if (isNewTrip) setTripReports([]);
+        }
+
+        setTripId(id);
+        setRoute(r);
+        setTolls(tollData.tolls);
+        setTollTotalCents(tollData.totalCents);
+        setTollEstimated(tollData.hasEstimate);
+        if (!isUpdate) setTollPaid(false);
+        setPhase("driving");
+        persistTrip(id, dest, r, tollData, keepReportIds);
+
+        lastRecalcPosRef.current = { lat: from.lat, lng: from.lng };
+        lastRecalcAtRef.current = Date.now();
+
+        if (!silent) {
+          const action = isUpdate ? "Rota atualizada" : "Percurso definido";
+          speak(
+            `${action}. ${formatDistance(r.distanceMeters)}, cerca de ${formatDuration(r.durationSeconds)}. Toque no microfone para reportar.`,
+          );
+          toast.success(
+            isUpdate
+              ? "Rota atualizada para o novo destino"
+              : "Percurso definido. Toque no microfone para reportar por voz.",
+          );
+          if (tollData.totalCents > 0) setTollDialogOpen(true);
+        }
+
+        return r;
+      } finally {
+        if (!silent) setRouting(false);
+      }
+    },
+    [persistTrip],
+  );
+
+  const recalculateRoute = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      const dest = destinationRef.current;
+      const coords = coordsRef.current;
+      const currentRoute = routeRef.current;
+      if (!dest || !coords || !currentRoute || recalcInFlightRef.current) return;
+
+      const sinceLast = Date.now() - lastRecalcAtRef.current;
+      const offRoute = offRouteDistanceMeters(coords, currentRoute.coordinates);
+      const moved = lastRecalcPosRef.current
+        ? distanceBetweenMeters(coords, lastRecalcPosRef.current)
+        : Infinity;
+
+      const shouldRecalc =
+        (offRoute > 70 && sinceLast > 8000) || (moved > 350 && sinceLast > 40000);
+      if (!shouldRecalc) return;
+
+      recalcInFlightRef.current = true;
+      try {
+        await applyRoute(dest, coords, { silent: opts.silent ?? true });
+      } catch {
+        /* noop — próxima tentativa no intervalo */
+      } finally {
+        recalcInFlightRef.current = false;
+      }
+    },
+    [applyRoute],
   );
 
   const handleVoice = useCallback(
@@ -399,69 +512,32 @@ export function DriveMode() {
     }
   }, [vehicles, selectedVehicleId]);
 
+  useEffect(() => {
+    if (phase !== "driving" || !destination || !geo.coords || !route) return;
+
+    if (!lastRecalcPosRef.current) {
+      lastRecalcPosRef.current = { lat: geo.coords.lat, lng: geo.coords.lng };
+      lastRecalcAtRef.current = Date.now();
+    }
+
+    const id = window.setInterval(() => void recalculateRoute({ silent: true }), 6000);
+    return () => clearInterval(id);
+  }, [phase, destination, route?.distanceMeters, geo.coords?.lat, geo.coords?.lng, recalculateRoute]);
+
   async function buildRoute(dest: GeocodeResult) {
     if (!geo.coords) return toast.error("Ative a localização primeiro");
-    const isUpdate = !!tripId && phase === "driving";
 
     setDestination(dest);
     setSuggestions([]);
     setDestinationQuery(dest.label.split(",")[0] ?? dest.label);
     setSearchFocused(false);
-    setRouting(true);
 
     try {
-      const r = await fetchDrivingRoute(geo.coords, dest);
-      const tollData = calculateTollsAlongRoute(r.coordinates, r.distanceMeters);
-      const id = tripId ?? crypto.randomUUID();
-      const expiresAt = new Date(createTripExpiry(r.durationSeconds)).toISOString();
-      const existing = loadTrip();
-      const keepReportIds = isUpdate && existing?.tripId === id ? existing.reportIds : [];
-
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) throw new Error("Sessão expirada");
-
-      const payload = {
-        destination_label: dest.label,
-        destination_lat: dest.lat,
-        destination_lng: dest.lng,
-        route_coordinates: r.coordinates,
-        distance_meters: r.distanceMeters,
-        duration_seconds: Math.round(r.durationSeconds),
-        toll_total_cents: tollData.totalCents,
-        toll_details: tollData.tolls,
-        status: "active" as const,
-        expires_at: expiresAt,
-      };
-
-      if (tripId) {
-        const { error } = await supabase.from("trips").update(payload).eq("id", tripId);
-        if (error) console.warn("Falha ao salvar viagem:", error.message);
-      } else {
-        const { error } = await supabase.from("trips").insert({ id, user_id: u.user.id, ...payload });
-        if (error) console.warn("Falha ao salvar viagem:", error.message);
-        setTripReports([]);
-      }
-
-      setTripId(id);
-      setRoute(r);
-      setTolls(tollData.tolls);
-      setTollTotalCents(tollData.totalCents);
-      setTollEstimated(tollData.hasEstimate);
-      if (!isUpdate) setTollPaid(false);
-      setPhase("driving");
-      persistTrip(id, dest, r, tollData, keepReportIds);
-
-      const action = isUpdate ? "Rota atualizada" : "Percurso definido";
-      speak(
-        `${action}. ${formatDistance(r.distanceMeters)}, cerca de ${formatDuration(r.durationSeconds)}. Toque no microfone para reportar.`,
-      );
-      toast.success(isUpdate ? "Rota atualizada para o novo destino" : "Percurso definido. Toque no microfone para reportar por voz.");
-      if (tollData.totalCents > 0) setTollDialogOpen(true);
+      const isNewTrip = !tripId || phase !== "driving";
+      await applyRoute(dest, geo.coords, { silent: false, isNewTrip });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Não foi possível traçar a rota";
       toast.error(msg);
-    } finally {
-      setRouting(false);
     }
   }
 
@@ -509,6 +585,7 @@ export function DriveMode() {
         navigating={phase === "driving"}
         reports={tripReports}
         tolls={tolls}
+        bottomInset={phase === "driving" && route ? 128 : 0}
       />
 
       <div className="pointer-events-none absolute inset-0 flex flex-col">
@@ -617,42 +694,6 @@ export function DriveMode() {
               )}
             </div>
           )}
-
-          {phase === "driving" && route && navStats && (
-            <div className="rounded-2xl bg-card/95 p-3 shadow-lg backdrop-blur">
-              <div className="flex items-center gap-4">
-                <div className="shrink-0">
-                  <p className="font-display text-3xl font-bold tabular-nums leading-none text-primary">
-                    {navStats.arrivalTime}
-                  </p>
-                  <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    chegada prevista
-                  </p>
-                </div>
-                <div className="h-11 w-px shrink-0 bg-border" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-                    <p className="text-lg font-bold tabular-nums">
-                      {formatDuration(navStats.remainingSeconds)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      · {formatDistance(navStats.remainingMeters)}
-                    </p>
-                    {geo.coords?.speed != null && geo.coords.speed > 0.5 && (
-                      <p className="text-sm text-muted-foreground">
-                        · {(geo.coords.speed * 3.6).toFixed(0)} km/h
-                      </p>
-                    )}
-                  </div>
-                  {destination && (
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      → {destination.label.split(",").slice(0, 2).join(",")}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
         </header>
 
         <div className="flex-1" />
@@ -687,6 +728,45 @@ export function DriveMode() {
         )}
       </div>
 
+      {phase === "driving" && route && navStats && (
+        <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 border-t border-border/60 bg-card/98 shadow-[0_-8px_32px_rgba(0,0,0,.12)] backdrop-blur-xl">
+          <div className="px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="font-display text-4xl font-bold tabular-nums leading-none">
+                  {formatDuration(navStats.remainingSeconds)}
+                </p>
+                <p className="mt-1 text-sm font-medium text-muted-foreground">
+                  {formatDistance(navStats.remainingMeters)}
+                  {geo.coords?.speed != null && geo.coords.speed > 0.5 && (
+                    <span> · {(geo.coords.speed * 3.6).toFixed(0)} km/h</span>
+                  )}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-display text-2xl font-bold tabular-nums text-primary">
+                  {navStats.arrivalTime}
+                </p>
+                <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  chegada
+                </p>
+              </div>
+            </div>
+            {destination && (
+              <p className="mt-2 truncate text-xs text-muted-foreground">
+                {destination.label.split(",").slice(0, 2).join(",")}
+              </p>
+            )}
+            {routing && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-primary">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Recalculando rota...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {menuOpen && (
         <nav className="pointer-events-auto absolute left-3 top-16 z-50 w-56 rounded-2xl border bg-card p-2 shadow-2xl">
           {[
@@ -711,7 +791,7 @@ export function DriveMode() {
       )}
 
       {tollDialogOpen && phase === "driving" && (
-        <div className="pointer-events-auto absolute inset-x-3 bottom-28 z-50 rounded-2xl border bg-card p-4 shadow-2xl">
+        <div className="pointer-events-auto absolute inset-x-3 bottom-[calc(8.5rem+env(safe-area-inset-bottom))] z-50 rounded-2xl border bg-card p-4 shadow-2xl">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-display text-lg font-bold">Pedágios na rota</h3>
@@ -790,13 +870,14 @@ export function DriveMode() {
               enableMic();
             }
           }}
-          className={`pointer-events-auto absolute bottom-28 right-4 flex h-16 w-16 flex-col items-center justify-center rounded-full shadow-2xl transition ${
+          className={`pointer-events-auto absolute right-4 flex h-16 w-16 flex-col items-center justify-center rounded-full shadow-2xl transition ${
             voice.listening
               ? "bg-destructive text-destructive-foreground animate-pulse"
               : voice.status === "denied"
                 ? "bg-muted text-muted-foreground"
                 : "bg-primary text-primary-foreground"
           }`}
+          style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}
           title={micLabel}
         >
           {submitting ? (
@@ -810,7 +891,10 @@ export function DriveMode() {
       )}
 
       {phase === "driving" && !geo.tracking && (
-        <div className="pointer-events-auto absolute bottom-4 left-3 right-3">
+        <div
+          className="pointer-events-auto absolute inset-x-3 z-40"
+          style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}
+        >
           <Button className="w-full gap-2" onClick={activateLocation}>
             <Navigation className="h-4 w-4" /> Reativar GPS
           </Button>

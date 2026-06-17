@@ -19,6 +19,10 @@ function haversineMeters(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.sqrt(x));
 }
 
+export function distanceBetweenMeters(a: LatLng, b: LatLng): number {
+  return haversineMeters(a, b);
+}
+
 function distancePointToSegmentMeters(
   point: LatLng,
   a: LatLng,
@@ -45,6 +49,26 @@ function distancePointToSegmentMeters(
 
   const closest = { lat: ay + t * dy, lng: (ax + t * dx) / cosLat };
   return { distance: haversineMeters(point, closest), t };
+}
+
+export function offRouteDistanceMeters(
+  position: LatLng,
+  coordinates: [number, number][],
+): number {
+  if (coordinates.length < 2) return 0;
+
+  let bestDist = Infinity;
+  for (let i = 0; i < coordinates.length - 1; i++) {
+    const [lat1, lng1] = coordinates[i];
+    const [lat2, lng2] = coordinates[i + 1];
+    const { distance } = distancePointToSegmentMeters(
+      position,
+      { lat: lat1, lng: lng1 },
+      { lat: lat2, lng: lng2 },
+    );
+    bestDist = Math.min(bestDist, distance);
+  }
+  return bestDist;
 }
 
 export function remainingAlongRoute(

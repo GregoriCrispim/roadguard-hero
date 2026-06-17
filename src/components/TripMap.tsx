@@ -19,6 +19,7 @@ type Props = {
   navigating: boolean;
   reports: TripReportMarker[];
   tolls: TollOnRoute[];
+  bottomInset?: number;
   onFollowChange?: (following: boolean) => void;
 };
 
@@ -41,7 +42,7 @@ function centerOnUserWithOffset(
   map.setView(center, zoom, { animate: false });
 }
 
-export function TripMap({ coords, route, navigating, reports, tolls, onFollowChange }: Props) {
+export function TripMap({ coords, route, navigating, reports, tolls, bottomInset = 0, onFollowChange }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const userMarkerRef = useRef<import("leaflet").Marker | null>(null);
@@ -197,7 +198,8 @@ export function TripMap({ coords, route, navigating, reports, tolls, onFollowCha
   useEffect(() => {
     if (!route?.coordinates.length) return;
 
-    const key = `${route.coordinates.length}-${route.distanceMeters}`;
+    const last = route.coordinates[route.coordinates.length - 1];
+    const key = `${route.distanceMeters}-${route.coordinates.length}-${route.coordinates[0]?.join(",")}-${last?.join(",")}`;
     if (routeFittedRef.current === key) return;
 
     let cancelled = false;
@@ -303,7 +305,8 @@ export function TripMap({ coords, route, navigating, reports, tolls, onFollowCha
         <button
           type="button"
           onClick={handleRecenter}
-          className="pointer-events-auto absolute bottom-36 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2.5 text-sm font-semibold shadow-2xl ring-1 ring-border"
+          className="pointer-events-auto absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2.5 text-sm font-semibold shadow-2xl ring-1 ring-border"
+          style={{ bottom: `calc(${bottomInset + 16}px + env(safe-area-inset-bottom))` }}
         >
           <LocateFixed className="h-4 w-4 text-primary" />
           Recentralizar

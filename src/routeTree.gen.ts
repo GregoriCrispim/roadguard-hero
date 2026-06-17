@@ -13,6 +13,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as AuthenticatedViagemRouteImport } from './routes/_authenticated/viagem'
 import { Route as AuthenticatedReportarRouteImport } from './routes/_authenticated/reportar'
 import { Route as AuthenticatedRecompensasRouteImport } from './routes/_authenticated/recompensas'
 import { Route as AuthenticatedRankingRouteImport } from './routes/_authenticated/ranking'
@@ -40,6 +41,11 @@ const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedViagemRoute = AuthenticatedViagemRouteImport.update({
+  id: '/viagem',
+  path: '/viagem',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedReportarRoute = AuthenticatedReportarRouteImport.update({
   id: '/reportar',
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/ranking': typeof AuthenticatedRankingRoute
   '/recompensas': typeof AuthenticatedRecompensasRoute
   '/reportar': typeof AuthenticatedReportarRoute
+  '/viagem': typeof AuthenticatedViagemRoute
   '/api/chat': typeof ApiChatRoute
 }
 export interface FileRoutesByTo {
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/ranking': typeof AuthenticatedRankingRoute
   '/recompensas': typeof AuthenticatedRecompensasRoute
   '/reportar': typeof AuthenticatedReportarRoute
+  '/viagem': typeof AuthenticatedViagemRoute
   '/api/chat': typeof ApiChatRoute
 }
 export interface FileRoutesById {
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   '/_authenticated/ranking': typeof AuthenticatedRankingRoute
   '/_authenticated/recompensas': typeof AuthenticatedRecompensasRoute
   '/_authenticated/reportar': typeof AuthenticatedReportarRoute
+  '/_authenticated/viagem': typeof AuthenticatedViagemRoute
   '/api/chat': typeof ApiChatRoute
 }
 export interface FileRouteTypes {
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/ranking'
     | '/recompensas'
     | '/reportar'
+    | '/viagem'
     | '/api/chat'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/ranking'
     | '/recompensas'
     | '/reportar'
+    | '/viagem'
     | '/api/chat'
   id:
     | '__root__'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/_authenticated/ranking'
     | '/_authenticated/recompensas'
     | '/_authenticated/reportar'
+    | '/_authenticated/viagem'
     | '/api/chat'
   fileRoutesById: FileRoutesById
 }
@@ -203,6 +215,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/chat'
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/viagem': {
+      id: '/_authenticated/viagem'
+      path: '/viagem'
+      fullPath: '/viagem'
+      preLoaderRoute: typeof AuthenticatedViagemRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/reportar': {
       id: '/_authenticated/reportar'
@@ -272,6 +291,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRankingRoute: typeof AuthenticatedRankingRoute
   AuthenticatedRecompensasRoute: typeof AuthenticatedRecompensasRoute
   AuthenticatedReportarRoute: typeof AuthenticatedReportarRoute
+  AuthenticatedViagemRoute: typeof AuthenticatedViagemRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -283,6 +303,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRankingRoute: AuthenticatedRankingRoute,
   AuthenticatedRecompensasRoute: AuthenticatedRecompensasRoute,
   AuthenticatedReportarRoute: AuthenticatedReportarRoute,
+  AuthenticatedViagemRoute: AuthenticatedViagemRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

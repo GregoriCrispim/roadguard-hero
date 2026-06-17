@@ -2,12 +2,13 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { RoadHeroLogo } from "./RoadHeroLogo";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { LogOut, Map, Trophy, Gift, Leaf, Sparkles, Layout, PlusCircle, Menu } from "lucide-react";
+import { LogOut, Map, Trophy, Gift, Leaf, Sparkles, Layout, PlusCircle, Menu, Navigation } from "lucide-react";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const NAV = [
   { to: "/app", label: "Painel", icon: Layout },
+  { to: "/viagem", label: "Modo viagem", icon: Navigation },
   { to: "/mapa", label: "Mapa", icon: Map },
   { to: "/ranking", label: "Ranking", icon: Trophy },
   { to: "/recompensas", label: "Recompensas", icon: Gift },

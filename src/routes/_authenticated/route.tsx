@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { AppHeader } from "@/components/AppHeader";
 
@@ -13,6 +13,12 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthedLayout() {
+  const isViagem = useRouterState({ select: (s) => s.location.pathname === "/viagem" });
+
+  if (isViagem) {
+    return <Outlet />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />

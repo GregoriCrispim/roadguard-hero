@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { LevelBadge } from "@/components/LevelBadge";
 import { Button } from "@/components/ui/button";
 import { CATEGORIAS } from "@/lib/categorias";
-import { PlusCircle, Map, Trophy, Gift, Sparkles } from "lucide-react";
+import { PlusCircle, Map, Trophy, Gift, Sparkles, Navigation } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/app")({
   component: Dashboard,
@@ -41,17 +41,18 @@ function Dashboard() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2"><LevelBadge pontos={pontos} /></div>
-        <Link to="/reportar" className="group rounded-2xl border bg-card p-6 transition hover:border-primary/40">
+        <Link to="/viagem" className="group rounded-2xl border border-primary/30 bg-card p-6 transition hover:border-primary/60">
           <div className="grid h-12 w-12 place-items-center rounded-xl gradient-primary glow-primary">
-            <PlusCircle className="h-6 w-6 text-primary-foreground" />
+            <Navigation className="h-6 w-6 text-primary-foreground" />
           </div>
-          <h3 className="mt-4 font-display text-lg font-bold">Reportar agora</h3>
-          <p className="text-sm text-muted-foreground">Cadastre uma nova ocorrência em segundos.</p>
+          <h3 className="mt-4 font-display text-lg font-bold">Iniciar viagem</h3>
+          <p className="text-sm text-muted-foreground">GPS, percurso e reportes por voz — estilo Waze.</p>
         </Link>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
+          { to: "/viagem", l: "Modo viagem", i: Navigation },
           { to: "/mapa", l: "Mapa ao vivo", i: Map },
           { to: "/ranking", l: "Ranking", i: Trophy },
           { to: "/recompensas", l: "Recompensas", i: Gift },

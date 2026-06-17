@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { LevelBadge } from "@/components/LevelBadge";
 import { CATEGORIAS } from "@/lib/categorias";
-import { Map, Trophy, Gift, Sparkles, Navigation } from "lucide-react";
+import { Map, Trophy, Gift, Sparkles, Navigation, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/painel")({
   component: PainelPage,
@@ -19,14 +19,27 @@ function PainelPage() {
       return data;
     },
   });
-  const { data: reports } = useQuery({
+
+  const {
+    data: reports,
+    isLoading: loadingReports,
+    isError: reportsError,
+    refetch: refetchReports,
+  } = useQuery({
     queryKey: ["my-reports"],
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
-      const { data } = await supabase.from("reports").select("*").eq("user_id", u.user.id).order("created_at", { ascending: false }).limit(5);
+      const { data, error } = await supabase
+        .from("reports")
+        .select("*")
+        .eq("user_id", u.user.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
       return data ?? [];
     },
+    refetchOnWindowFocus: true,
   });
 
   const pontos = profile?.pontos ?? 0;
@@ -67,30 +80,68 @@ function PainelPage() {
       </div>
 
       <div className="rounded-2xl border bg-card p-6">
-        <h2 className="font-display text-xl font-bold">Seus últimos reportes</h2>
-        {!reports?.length && (
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-display text-xl font-bold">Meus reportes</h2>
+          <button
+            type="button"
+            onClick={() => refetchReports()}
+            className="text-sm text-primary underline"
+          >
+            Atualizar
+          </button>
+        </div>
+
+        {loadingReports && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Carregando reportes...
+          </div>
+        )}
+
+        {reportsError && (
+          <p className="mt-3 text-sm text-destructive">Erro ao carregar reportes. Tente atualizar.</p>
+        )}
+
+        {!loadingReports && !reportsError && !reports?.length && (
           <p className="mt-3 text-sm text-muted-foreground">
-            Você ainda não fez reportes. <Link to="/app" className="text-primary underline">Inicie uma viagem.</Link>
+            Você ainda não fez reportes.{" "}
+            <Link to="/app" className="text-primary underline">Inicie uma viagem</Link>, toque no microfone e fale naturalmente (ex.: &quot;tem um cavalo na pista&quot;).
           </p>
         )}
+
         <ul className="mt-4 divide-y divide-border">
           {reports?.map((r) => {
             const c = CATEGORIAS[r.categoria as keyof typeof CATEGORIAS];
             const Icon = c?.icon;
             return (
-              <li key={r.id} className="flex items-center justify-between py-3">
-                <div className="flex items-center gap-3">
-                  {Icon && <Icon className="h-5 w-5" style={{ color: c?.cor }} />}
-                  <div>
-                    <p className="font-medium">{c?.label}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString("pt-BR")} · {r.status}</p>
+              <li key={r.id} className="flex items-start justify-between gap-3 py-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  {Icon && <Icon className="mt-0.5 h-5 w-5 shrink-0" style={{ color: c?.cor }} />}
+                  <div className="min-w-0">
+                    <p className="font-medium">{c?.label ?? r.categoria}</p>
+                    {r.descricao && (
+                      <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{r.descricao}</p>
+                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(r.created_at).toLocaleString("pt-BR")}
+                      {r.status ? ` · ${r.status === "validado" ? "validado ✓" : r.status}` : ""}
+                      {r.gravidade ? ` · gravidade ${r.gravidade}` : ""}
+                    </p>
                   </div>
                 </div>
-                {r.gravidade && <span className="rounded-full bg-surface px-2 py-0.5 text-xs">{r.gravidade}</span>}
+                {r.gravidade && (
+                  <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs">{r.gravidade}</span>
+                )}
               </li>
             );
           })}
         </ul>
+
+        {reports && reports.length > 0 && (
+          <p className="mt-4 text-xs text-muted-foreground">
+            {reports.length} reporte(s) ·{" "}
+            <Link to="/mapa" className="text-primary underline">Ver no mapa geral</Link>
+          </p>
+        )}
       </div>
     </div>
   );

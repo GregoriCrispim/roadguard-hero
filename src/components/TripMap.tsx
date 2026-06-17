@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { CATEGORIAS, type CategoriaKey } from "@/lib/categorias";
 import type { RouteResult } from "@/lib/routing";
 import type { TollOnRoute } from "@/lib/tolls";
-import { formatBRL } from "@/lib/tolls";
+import { formatBRL, getTollPlazaPosition } from "@/lib/tolls";
 
 export type TripReportMarker = {
   id: string;
@@ -178,7 +178,8 @@ export function TripMap({ coords, route, tracking, reports, tolls }: Props) {
       layer.clearLayers();
 
       for (const toll of tolls) {
-        const plaza = TOLL_MARKER_POSITIONS[toll.id];
+        if (toll.estimated) continue;
+        const plaza = getTollPlazaPosition(toll.id);
         if (!plaza) continue;
         const icon = L.divIcon({
           className: "",
@@ -194,23 +195,3 @@ export function TripMap({ coords, route, tracking, reports, tolls }: Props) {
 
   return <div ref={ref} className="absolute inset-0 z-0" />;
 }
-
-const TOLL_MARKER_POSITIONS: Record<string, { lat: number; lng: number }> = {
-  "sp-imigrantes": { lat: -23.8512, lng: -46.7185 },
-  "sp-anchieta": { lat: -23.912, lng: -46.389 },
-  "sp-castelo": { lat: -23.452, lng: -46.876 },
-  "sp-band": { lat: -23.012, lng: -47.134 },
-  "sp-raposo": { lat: -23.589, lng: -46.752 },
-  "rj-arcored": { lat: -22.903, lng: -43.178 },
-  "rj-teresopolis": { lat: -22.412, lng: -42.965 },
-  "mg-bh-rio": { lat: -19.032, lng: -43.425 },
-  "mg-contagem": { lat: -19.945, lng: -44.052 },
-  "pr-curitiba": { lat: -25.428, lng: -49.273 },
-  "pr-litoral": { lat: -25.542, lng: -48.512 },
-  "sc-florianopolis": { lat: -27.595, lng: -48.548 },
-  "rs-porto": { lat: -30.034, lng: -51.217 },
-  "ba-salvador": { lat: -12.971, lng: -38.501 },
-  "df-brasilia": { lat: -15.839, lng: -47.923 },
-  "go-anapolis": { lat: -16.328, lng: -48.953 },
-  "es-vitoria": { lat: -20.315, lng: -40.312 },
-};

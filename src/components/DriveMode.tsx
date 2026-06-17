@@ -31,7 +31,8 @@ import {
   saveTrip,
   type StoredTrip,
 } from "@/lib/trip-storage";
-import { parseVoiceCommand, VOICE_HINTS } from "@/lib/voice-commands";
+import { interpretVoiceReport } from "@/lib/interpret-voice-report.functions";
+import { inferReportFromNaturalSpeech, parseVoiceCommand, VOICE_HINTS } from "@/lib/voice-commands";
 import { validarOcorrencia } from "@/lib/validar-ocorrencia.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -75,6 +76,7 @@ export function DriveMode() {
   const boot = getBootTrip();
   const qc = useQueryClient();
   const validar = useServerFn(validarOcorrencia);
+  const interpretVoice = useServerFn(interpretVoiceReport);
   const payTollFn = useServerFn(payTolls);
   const geo = useGeolocation();
   const voice = useSpeechRecognition();
@@ -89,6 +91,9 @@ export function DriveMode() {
   const [route, setRoute] = useState<RouteResult | null>(boot?.route ?? null);
   const [tolls, setTolls] = useState<TollOnRoute[]>(boot?.tolls ?? []);
   const [tollTotalCents, setTollTotalCents] = useState(boot?.tollTotalCents ?? 0);
+  const [tollEstimated, setTollEstimated] = useState(
+    boot?.tolls?.some((t) => t.estimated) ?? false,
+  );
   const [tollPaid, setTollPaid] = useState(false);
   const [routing, setRouting] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -179,38 +184,66 @@ export function DriveMode() {
       if (phaseRef.current !== "driving" || !coordsRef.current || submittingRef.current) return;
 
       const now = Date.now();
-      if (now - lastVoiceAtRef.current < 1200) return;
+      if (now - lastVoiceAtRef.current < 1000) return;
       lastVoiceAtRef.current = now;
 
       setLastVoice(text);
-      const cmd = parseVoiceCommand(text);
 
-      if (cmd.type === "cancel") {
+      let categoria: CategoriaKey | null = null;
+      let descricao = text;
+
+      const local = parseVoiceCommand(text);
+      if (local.type === "cancel") {
         toast.message("Comando cancelado");
         speak("Cancelado");
         return;
       }
 
-      if (cmd.type === "report_prompt") {
-        toast.message("Diga o tipo de ocorrência", { description: VOICE_HINTS[0] });
-        speak("Qual ocorrência deseja reportar?");
+      if (local.type === "report_prompt") {
+        toast.message("Descreva a ocorrência", { description: VOICE_HINTS[0] });
+        speak("O que você está vendo na rodovia?");
         return;
       }
 
-      if (cmd.type === "unknown") {
-        toast.error("Não entendi. Tente: animal na pista, acidente, veículo parado...");
-        return;
+      if (local.type === "categoria") {
+        categoria = local.categoria;
+        descricao = text;
+      } else {
+        const inferred = inferReportFromNaturalSpeech(text);
+        if (inferred && inferred.confianca >= 0.5) {
+          categoria = inferred.categoria;
+          descricao = text;
+        } else {
+          try {
+            const interpreted = await interpretVoice({ data: { text } });
+
+            if (!interpreted.isReport || !interpreted.categoria || interpreted.confianca < 0.35) {
+              toast.message("Descreva a ocorrência naturalmente", {
+                description: VOICE_HINTS[0],
+              });
+              return;
+            }
+
+            categoria = interpreted.categoria;
+            descricao = interpreted.descricao || text;
+          } catch {
+            toast.error("Erro ao interpretar. Tente: tem um cavalo na pista, acidente à frente...");
+            return;
+          }
+        }
       }
 
-      const cat = CATEGORIAS[cmd.categoria];
+      if (!categoria) return;
+
+      const cat = CATEGORIAS[categoria];
       const currentCoords = coordsRef.current;
       const currentTripId = tripIdRef.current;
       setSubmitting(true);
 
       try {
         const r = await submitReport({
-          categoria: cmd.categoria,
-          descricao: `Reporte por voz: ${text}`,
+          categoria,
+          descricao: `Reporte por voz: ${descricao}`,
           lat: currentCoords.lat,
           lng: currentCoords.lng,
           tripId: currentTripId ?? undefined,
@@ -220,12 +253,12 @@ export function DriveMode() {
           id: r.id,
           lat: currentCoords.lat,
           lng: currentCoords.lng,
-          categoria: cmd.categoria,
+          categoria,
         };
         setTripReports((prev) => [...prev, marker]);
         if (currentTripId) addReportToTrip(currentTripId, r.id);
 
-        const res = await validar({ data: { reportId: r.id, categoria: cmd.categoria, descricao: text } });
+        const res = await validar({ data: { reportId: r.id, categoria, descricao } });
         qc.invalidateQueries({ queryKey: ["reports-all"] });
         qc.invalidateQueries({ queryKey: ["my-reports"] });
         qc.invalidateQueries({ queryKey: ["me"] });
@@ -239,7 +272,7 @@ export function DriveMode() {
         setSubmitting(false);
       }
     },
-    [validar, qc],
+    [validar, interpretVoice, qc],
   );
 
   handleVoiceRef.current = handleVoice;
@@ -274,6 +307,20 @@ export function DriveMode() {
     if (!saved) return;
 
     (async () => {
+      if (saved.route?.coordinates?.length) {
+        const tollData = calculateTollsAlongRoute(
+          saved.route.coordinates,
+          saved.route.distanceMeters,
+        );
+        if (tollData.totalCents > 0 && saved.tollTotalCents <= 0) {
+          setTolls(tollData.tolls);
+          setTollTotalCents(tollData.totalCents);
+          setTollEstimated(tollData.hasEstimate);
+        } else if (saved.tolls?.some((t) => t.estimated)) {
+          setTollEstimated(true);
+        }
+      }
+
       const { data: reports } = await supabase
         .from("reports")
         .select("id, latitude, longitude, categoria")
@@ -351,7 +398,7 @@ export function DriveMode() {
 
     try {
       const r = await fetchDrivingRoute(geo.coords, dest);
-      const tollData = calculateTollsAlongRoute(r.coordinates);
+      const tollData = calculateTollsAlongRoute(r.coordinates, r.distanceMeters);
       const id = tripId ?? crypto.randomUUID();
       const expiresAt = new Date(createTripExpiry(r.durationSeconds)).toISOString();
       const existing = loadTrip();
@@ -375,10 +422,10 @@ export function DriveMode() {
 
       if (tripId) {
         const { error } = await supabase.from("trips").update(payload).eq("id", tripId);
-        if (error) throw error;
+        if (error) console.warn("Falha ao salvar viagem:", error.message);
       } else {
         const { error } = await supabase.from("trips").insert({ id, user_id: u.user.id, ...payload });
-        if (error) throw error;
+        if (error) console.warn("Falha ao salvar viagem:", error.message);
         setTripReports([]);
       }
 
@@ -386,6 +433,7 @@ export function DriveMode() {
       setRoute(r);
       setTolls(tollData.tolls);
       setTollTotalCents(tollData.totalCents);
+      setTollEstimated(tollData.hasEstimate);
       if (!isUpdate) setTollPaid(false);
       setPhase("driving");
       persistTrip(id, dest, r, tollData, keepReportIds);
@@ -395,7 +443,7 @@ export function DriveMode() {
         `${action}. ${formatDistance(r.distanceMeters)}, cerca de ${formatDuration(r.durationSeconds)}. Toque no microfone para reportar.`,
       );
       toast.success(isUpdate ? "Rota atualizada para o novo destino" : "Percurso definido. Toque no microfone para reportar por voz.");
-      if (!isUpdate && tollData.totalCents > 0) setTollDialogOpen(true);
+      if (tollData.totalCents > 0) setTollDialogOpen(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Não foi possível traçar a rota";
       toast.error(msg);
@@ -545,15 +593,21 @@ export function DriveMode() {
                   {micLabel}
                 </span>
               )}
-              {phase === "driving" && tollTotalCents > 0 && (
+              {phase === "driving" && route && (
                 <button
                   type="button"
                   onClick={() => setTollDialogOpen(true)}
                   className={`rounded-full px-3 py-1 text-xs font-medium shadow ${
-                    tollPaid ? "bg-emerald-600 text-white" : "bg-amber-500 text-black"
+                    tollTotalCents <= 0
+                      ? "bg-card"
+                      : tollPaid
+                        ? "bg-emerald-600 text-white"
+                        : "bg-amber-500 text-black"
                   }`}
                 >
-                  Pedágio {formatBRL(tollTotalCents)} {tollPaid ? "✓ pago" : ""}
+                  {tollTotalCents > 0
+                    ? `Pedágio ${formatBRL(tollTotalCents)}${tollEstimated ? " (est.)" : ""} ${tollPaid ? "✓" : ""}`
+                    : "Ver pedágios"}
                 </button>
               )}
             </div>
@@ -620,60 +674,72 @@ export function DriveMode() {
         </nav>
       )}
 
-      {tollDialogOpen && tollTotalCents > 0 && (
+      {tollDialogOpen && phase === "driving" && (
         <div className="pointer-events-auto absolute inset-x-3 bottom-28 z-50 rounded-2xl border bg-card p-4 shadow-2xl">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-display text-lg font-bold">Pedágios na rota</h3>
-              <p className="text-sm text-muted-foreground">{tolls.length} praça(s) · Total {formatBRL(tollTotalCents)}</p>
+              <p className="text-sm text-muted-foreground">
+                {tollTotalCents > 0
+                  ? `${tolls.length} praça(s) · Total ${formatBRL(tollTotalCents)}${tollEstimated ? " (estimativa)" : ""}`
+                  : "Nenhum pedágio detectado nesta rota"}
+              </p>
             </div>
             <button type="button" onClick={() => setTollDialogOpen(false)}>
               <X className="h-5 w-5" />
             </button>
           </div>
-          <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto text-sm">
-            {tolls.map((t) => (
-              <li key={t.id} className="flex justify-between gap-2">
-                <span>{t.name} ({t.highway})</span>
-                <span className="font-medium">{formatBRL(t.priceCarCents)}</span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 space-y-2">
-            <Label>Veículo para pagamento</Label>
-            {!vehicles?.length ? (
-              <p className="text-sm text-muted-foreground">
-                <Link to="/veiculos" className="text-primary underline" onClick={() => setMenuOpen(false)}>
-                  Cadastre uma placa
-                </Link>{" "}
-                para pagar antecipado.
-              </p>
-            ) : (
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                value={selectedVehicleId}
-                onChange={(e) => setSelectedVehicleId(e.target.value)}
-              >
-                {vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.placa}{v.apelido ? ` · ${v.apelido}` : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-            <Button
-              className="w-full gap-2"
-              disabled={payingTolls || tollPaid || !vehicles?.length}
-              onClick={handlePayTolls}
-            >
-              {payingTolls ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+          {tolls.length > 0 ? (
+            <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto text-sm">
+              {tolls.map((t) => (
+                <li key={t.id} className="flex justify-between gap-2">
+                  <span>{t.name} ({t.highway})</span>
+                  <span className="font-medium">{formatBRL(t.priceCarCents)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Rotas curtas ou urbanas podem não ter pedágio. Tente uma rota interestadual mais longa.
+            </p>
+          )}
+          {tollTotalCents > 0 && (
+            <div className="mt-4 space-y-2">
+              <Label>Veículo para pagamento</Label>
+              {!vehicles?.length ? (
+                <p className="text-sm text-muted-foreground">
+                  <Link to="/veiculos" className="text-primary underline" onClick={() => setMenuOpen(false)}>
+                    Cadastre uma placa
+                  </Link>{" "}
+                  para pagar antecipado.
+                </p>
               ) : (
-                <CreditCard className="h-4 w-4" />
+                <select
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  value={selectedVehicleId}
+                  onChange={(e) => setSelectedVehicleId(e.target.value)}
+                >
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.placa}{v.apelido ? ` · ${v.apelido}` : ""}
+                    </option>
+                  ))}
+                </select>
               )}
-              {tollPaid ? "Pedágio já pago" : `Pagar ${formatBRL(tollTotalCents)} antecipado`}
-            </Button>
-          </div>
+              <Button
+                className="w-full gap-2"
+                disabled={payingTolls || tollPaid || !vehicles?.length}
+                onClick={handlePayTolls}
+              >
+                {payingTolls ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CreditCard className="h-4 w-4" />
+                )}
+                {tollPaid ? "Pedágio já pago" : `Pagar ${formatBRL(tollTotalCents)} antecipado`}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

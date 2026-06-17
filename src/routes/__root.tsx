@@ -84,6 +84,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "Plataforma colaborativa que transforma motoristas em agentes ativos da segurança viária com IA e gamificação." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { property: "og:title", content: "RoadHero — Milhões de olhos protegendo nossas rodovias" },
+      { name: "twitter:title", content: "RoadHero — Milhões de olhos protegendo nossas rodovias" },
+      { property: "og:description", content: "Plataforma colaborativa que transforma motoristas em agentes ativos da segurança viária com IA e gamificação." },
+      { name: "twitter:description", content: "Plataforma colaborativa que transforma motoristas em agentes ativos da segurança viária com IA e gamificação." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/76fc9024-d790-476e-9814-376d0ffdf2b7/id-preview-c0340df9--2d89e0c1-cdbf-497f-9de2-1fd04b6d66ca.lovable.app-1781706101162.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/76fc9024-d790-476e-9814-376d0ffdf2b7/id-preview-c0340df9--2d89e0c1-cdbf-497f-9de2-1fd04b6d66ca.lovable.app-1781706101162.png" },
     ],
     links: [
       {

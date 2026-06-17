@@ -22,7 +22,7 @@ function simulateIa(categoria: string, descricao: string): { gravidade: Gravidad
   if (categoria === "clima_severo") base = "media";
 
   if (palavrasCriticas.some((p) => txt.includes(p))) base = "critica";
-  else if (palavrasAltas.some((p) => txt.includes(p)) && base !== "critica") base = "alta";
+  else if (palavrasAltas.some((p) => txt.includes(p))) base = "alta";
 
   const score = +(0.7 + Math.random() * 0.28).toFixed(2);
   const pontosMap: Record<Gravidade, number> = { baixa: 30, media: 60, alta: 120, critica: 200 };

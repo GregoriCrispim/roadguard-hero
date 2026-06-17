@@ -13,9 +13,11 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthedLayout() {
-  const isViagem = useRouterState({ select: (s) => s.location.pathname === "/viagem" });
+  const isFullscreen = useRouterState({
+    select: (s) => s.location.pathname === "/app" || s.location.pathname === "/viagem",
+  });
 
-  if (isViagem) {
+  if (isFullscreen) {
     return <Outlet />;
   }
 

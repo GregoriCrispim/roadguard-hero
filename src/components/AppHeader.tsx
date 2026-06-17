@@ -7,9 +7,9 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const NAV = [
-  { to: "/app", label: "Painel", icon: Layout },
-  { to: "/viagem", label: "Modo viagem", icon: Navigation },
-  { to: "/mapa", label: "Mapa", icon: Map },
+  { to: "/app", label: "Mapa", icon: Navigation },
+  { to: "/painel", label: "Painel", icon: Layout },
+  { to: "/mapa", label: "Ocorrências", icon: Map },
   { to: "/ranking", label: "Ranking", icon: Trophy },
   { to: "/recompensas", label: "Recompensas", icon: Gift },
   { to: "/impacto", label: "Impacto", icon: Leaf },

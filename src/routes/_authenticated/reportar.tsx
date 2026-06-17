@@ -60,7 +60,7 @@ function Reportar() {
       toast.loading("IA analisando ocorrência...", { id: "ia" });
       const res = await validar({ data: { reportId: r.id, categoria, descricao } });
       toast.success(`Validado! Gravidade ${res.gravidade} · +${res.pontos} pontos`, { id: "ia" });
-      nav({ to: "/app" });
+      nav({ to: "/painel" });
     } catch (e: any) {
       toast.error(e.message ?? "Erro ao reportar");
     } finally {

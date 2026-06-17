@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
-import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
+import { createGeminiProvider } from "@/lib/ai-gateway.server";
 
 const SYSTEM = `Você é o Guardião Inteligente, um assistente especializado em segurança viária nas rodovias brasileiras. Responda em português do Brasil, de forma clara, prática e educativa.
 - Foque exclusivamente em: animais na pista, veículos parados, acidentes, objetos na pista, incêndios, condições climáticas severas, suspeitas/assaltos e situações de risco viário.
@@ -13,11 +13,11 @@ export const Route = createFileRoute("/api/chat")({
     handlers: {
       POST: async ({ request }) => {
         const { messages } = (await request.json()) as { messages: UIMessage[] };
-        const key = process.env.LOVABLE_API_KEY;
-        if (!key) return new Response("Missing LOVABLE_API_KEY", { status: 500 });
-        const gateway = createLovableAiGatewayProvider(key);
+        const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        if (!key) return new Response("Missing GOOGLE_GENERATIVE_AI_API_KEY", { status: 500 });
+        const gemini = createGeminiProvider(key);
         const result = streamText({
-          model: gateway("google/gemini-3-flash-preview"),
+          model: gemini("gemini-2.0-flash"),
           system: SYSTEM,
           messages: await convertToModelMessages(messages),
         });

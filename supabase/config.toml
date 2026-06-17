@@ -1,1 +1,12 @@
 project_id = "gxhlbiyflpzhhwiqhldr"
+
+[auth]
+site_url = "https://roadguard-hero.vercel.app"
+additional_redirect_urls = [
+  "https://roadguard-hero.vercel.app/**",
+  "https://roadguard-hero.vercel.app/app",
+  "https://roadguard-hero.vercel.app/auth",
+  "http://localhost:8080/**",
+  "http://localhost:8080/app",
+  "http://localhost:8080/auth",
+]

@@ -10,7 +10,6 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -39,9 +38,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -88,8 +84,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:title", content: "RoadHero — Milhões de olhos protegendo nossas rodovias" },
       { property: "og:description", content: "Plataforma colaborativa que transforma motoristas em agentes ativos da segurança viária com IA e gamificação." },
       { name: "twitter:description", content: "Plataforma colaborativa que transforma motoristas em agentes ativos da segurança viária com IA e gamificação." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/76fc9024-d790-476e-9814-376d0ffdf2b7/id-preview-c0340df9--2d89e0c1-cdbf-497f-9de2-1fd04b6d66ca.lovable.app-1781706101162.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/76fc9024-d790-476e-9814-376d0ffdf2b7/id-preview-c0340df9--2d89e0c1-cdbf-497f-9de2-1fd04b6d66ca.lovable.app-1781706101162.png" },
+      { property: "og:image", content: "https://roadguard-hero.vercel.app/og-image.jpg" },
+      { name: "twitter:image", content: "https://roadguard-hero.vercel.app/og-image.jpg" },
     ],
     links: [
       {

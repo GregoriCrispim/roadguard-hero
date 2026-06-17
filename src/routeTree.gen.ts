@@ -9,38 +9,187 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as AuthenticatedReportarRouteImport } from './routes/_authenticated/reportar'
+import { Route as AuthenticatedRecompensasRouteImport } from './routes/_authenticated/recompensas'
+import { Route as AuthenticatedRankingRouteImport } from './routes/_authenticated/ranking'
+import { Route as AuthenticatedMapaRouteImport } from './routes/_authenticated/mapa'
+import { Route as AuthenticatedImpactoRouteImport } from './routes/_authenticated/impacto'
+import { Route as AuthenticatedGuardiaoRouteImport } from './routes/_authenticated/guardiao'
+import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiChatRoute = ApiChatRouteImport.update({
+  id: '/api/chat',
+  path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedReportarRoute = AuthenticatedReportarRouteImport.update({
+  id: '/reportar',
+  path: '/reportar',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedRecompensasRoute =
+  AuthenticatedRecompensasRouteImport.update({
+    id: '/recompensas',
+    path: '/recompensas',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRankingRoute = AuthenticatedRankingRouteImport.update({
+  id: '/ranking',
+  path: '/ranking',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMapaRoute = AuthenticatedMapaRouteImport.update({
+  id: '/mapa',
+  path: '/mapa',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedImpactoRoute = AuthenticatedImpactoRouteImport.update({
+  id: '/impacto',
+  path: '/impacto',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedGuardiaoRoute = AuthenticatedGuardiaoRouteImport.update({
+  id: '/guardiao',
+  path: '/guardiao',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAppRoute = AuthenticatedAppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/app': typeof AuthenticatedAppRoute
+  '/guardiao': typeof AuthenticatedGuardiaoRoute
+  '/impacto': typeof AuthenticatedImpactoRoute
+  '/mapa': typeof AuthenticatedMapaRoute
+  '/ranking': typeof AuthenticatedRankingRoute
+  '/recompensas': typeof AuthenticatedRecompensasRoute
+  '/reportar': typeof AuthenticatedReportarRoute
+  '/api/chat': typeof ApiChatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/app': typeof AuthenticatedAppRoute
+  '/guardiao': typeof AuthenticatedGuardiaoRoute
+  '/impacto': typeof AuthenticatedImpactoRoute
+  '/mapa': typeof AuthenticatedMapaRoute
+  '/ranking': typeof AuthenticatedRankingRoute
+  '/recompensas': typeof AuthenticatedRecompensasRoute
+  '/reportar': typeof AuthenticatedReportarRoute
+  '/api/chat': typeof ApiChatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/app': typeof AuthenticatedAppRoute
+  '/_authenticated/guardiao': typeof AuthenticatedGuardiaoRoute
+  '/_authenticated/impacto': typeof AuthenticatedImpactoRoute
+  '/_authenticated/mapa': typeof AuthenticatedMapaRoute
+  '/_authenticated/ranking': typeof AuthenticatedRankingRoute
+  '/_authenticated/recompensas': typeof AuthenticatedRecompensasRoute
+  '/_authenticated/reportar': typeof AuthenticatedReportarRoute
+  '/api/chat': typeof ApiChatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/admin'
+    | '/app'
+    | '/guardiao'
+    | '/impacto'
+    | '/mapa'
+    | '/ranking'
+    | '/recompensas'
+    | '/reportar'
+    | '/api/chat'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/admin'
+    | '/app'
+    | '/guardiao'
+    | '/impacto'
+    | '/mapa'
+    | '/ranking'
+    | '/recompensas'
+    | '/reportar'
+    | '/api/chat'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/admin'
+    | '/_authenticated/app'
+    | '/_authenticated/guardiao'
+    | '/_authenticated/impacto'
+    | '/_authenticated/mapa'
+    | '/_authenticated/ranking'
+    | '/_authenticated/recompensas'
+    | '/_authenticated/reportar'
+    | '/api/chat'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
+  ApiChatRoute: typeof ApiChatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +197,103 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/chat': {
+      id: '/api/chat'
+      path: '/api/chat'
+      fullPath: '/api/chat'
+      preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/reportar': {
+      id: '/_authenticated/reportar'
+      path: '/reportar'
+      fullPath: '/reportar'
+      preLoaderRoute: typeof AuthenticatedReportarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/recompensas': {
+      id: '/_authenticated/recompensas'
+      path: '/recompensas'
+      fullPath: '/recompensas'
+      preLoaderRoute: typeof AuthenticatedRecompensasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/ranking': {
+      id: '/_authenticated/ranking'
+      path: '/ranking'
+      fullPath: '/ranking'
+      preLoaderRoute: typeof AuthenticatedRankingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/mapa': {
+      id: '/_authenticated/mapa'
+      path: '/mapa'
+      fullPath: '/mapa'
+      preLoaderRoute: typeof AuthenticatedMapaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/impacto': {
+      id: '/_authenticated/impacto'
+      path: '/impacto'
+      fullPath: '/impacto'
+      preLoaderRoute: typeof AuthenticatedImpactoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/guardiao': {
+      id: '/_authenticated/guardiao'
+      path: '/guardiao'
+      fullPath: '/guardiao'
+      preLoaderRoute: typeof AuthenticatedGuardiaoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/app': {
+      id: '/_authenticated/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AuthenticatedAppRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAppRoute: typeof AuthenticatedAppRoute
+  AuthenticatedGuardiaoRoute: typeof AuthenticatedGuardiaoRoute
+  AuthenticatedImpactoRoute: typeof AuthenticatedImpactoRoute
+  AuthenticatedMapaRoute: typeof AuthenticatedMapaRoute
+  AuthenticatedRankingRoute: typeof AuthenticatedRankingRoute
+  AuthenticatedRecompensasRoute: typeof AuthenticatedRecompensasRoute
+  AuthenticatedReportarRoute: typeof AuthenticatedReportarRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAppRoute: AuthenticatedAppRoute,
+  AuthenticatedGuardiaoRoute: AuthenticatedGuardiaoRoute,
+  AuthenticatedImpactoRoute: AuthenticatedImpactoRoute,
+  AuthenticatedMapaRoute: AuthenticatedMapaRoute,
+  AuthenticatedRankingRoute: AuthenticatedRankingRoute,
+  AuthenticatedRecompensasRoute: AuthenticatedRecompensasRoute,
+  AuthenticatedReportarRoute: AuthenticatedReportarRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
+  ApiChatRoute: ApiChatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

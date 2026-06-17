@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type SpeechRecognitionCtor = new () => SpeechRecognition;
 
+export type MicStatus = "unsupported" | "idle" | "listening" | "error" | "denied";
+
 function getSpeechRecognition(): SpeechRecognitionCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as Window & {
@@ -12,87 +14,123 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
 }
 
 export function useSpeechRecognition(lang = "pt-BR") {
-  const [listening, setListening] = useState(false);
+  const [status, setStatus] = useState<MicStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [supported, setSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const onResultRef = useRef<(text: string) => void>(() => {});
+  const shouldListenRef = useRef(false);
+
+  const startRecognition = useCallback(() => {
+    const recognition = recognitionRef.current;
+    if (!recognition || !shouldListenRef.current) return;
+    try {
+      recognition.start();
+      setStatus("listening");
+    } catch {
+      /* já em execução */
+    }
+  }, []);
 
   useEffect(() => {
     const Ctor = getSpeechRecognition();
     setSupported(!!Ctor);
-    if (!Ctor) return;
+    if (!Ctor) {
+      setStatus("unsupported");
+      return;
+    }
 
     const recognition = new Ctor();
     recognition.lang = lang;
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
-      const last = event.results[event.results.length - 1];
-      if (!last?.isFinal) return;
-      const text = last[0]?.transcript?.trim() ?? "";
-      if (text) {
-        setTranscript(text);
-        onResultRef.current(text);
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (!result?.isFinal) continue;
+        const text = result[0]?.transcript?.trim() ?? "";
+        if (text) {
+          setTranscript(text);
+          onResultRef.current(text);
+        }
       }
     };
 
     recognition.onend = () => {
-      if (recognitionRef.current?._shouldRestart) {
-        try {
-          recognition.start();
-        } catch {
-          setListening(false);
-        }
+      if (shouldListenRef.current) {
+        window.setTimeout(startRecognition, 250);
       } else {
-        setListening(false);
+        setStatus("idle");
       }
     };
 
     recognition.onerror = (event) => {
       const err = (event as SpeechRecognitionErrorEvent).error;
+      if (err === "not-allowed" || err === "service-not-allowed") {
+        shouldListenRef.current = false;
+        setStatus("denied");
+        return;
+      }
       if (err === "no-speech" || err === "aborted") return;
-      setListening(false);
+      setStatus("error");
     };
-    recognitionRef.current = recognition as SpeechRecognition & { _shouldRestart?: boolean };
+
+    recognitionRef.current = recognition;
 
     return () => {
-      recognitionRef.current = null;
+      shouldListenRef.current = false;
       try {
         recognition.stop();
       } catch {
         /* noop */
       }
+      recognitionRef.current = null;
     };
-  }, [lang]);
+  }, [lang, startRecognition]);
 
-  const start = useCallback((onResult: (text: string) => void) => {
-    const recognition = recognitionRef.current as (SpeechRecognition & { _shouldRestart?: boolean }) | null;
-    if (!recognition) return false;
-    onResultRef.current = onResult;
-    recognition._shouldRestart = true;
+  const requestMic = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) return true;
     try {
-      recognition.start();
-      setListening(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
       return true;
     } catch {
+      setStatus("denied");
       return false;
     }
   }, []);
 
+  const start = useCallback(
+    async (onResult: (text: string) => void) => {
+      if (!recognitionRef.current) return false;
+      const permitted = await requestMic();
+      if (!permitted) return false;
+      onResultRef.current = onResult;
+      shouldListenRef.current = true;
+      startRecognition();
+      return true;
+    },
+    [requestMic, startRecognition],
+  );
+
   const stop = useCallback(() => {
-    const recognition = recognitionRef.current as (SpeechRecognition & { _shouldRestart?: boolean }) | null;
-    if (!recognition) return;
-    recognition._shouldRestart = false;
+    shouldListenRef.current = false;
     try {
-      recognition.stop();
+      recognitionRef.current?.stop();
     } catch {
       /* noop */
     }
-    setListening(false);
+    setStatus("idle");
   }, []);
 
-  return { supported, listening, transcript, start, stop };
+  return {
+    supported,
+    listening: status === "listening",
+    status,
+    transcript,
+    start,
+    stop,
+  };
 }

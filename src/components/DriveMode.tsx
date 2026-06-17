@@ -26,9 +26,9 @@ import {
   createTripExpiry,
   isTripCompleted,
   isTripExpired,
+  loadActiveTrip,
   loadTrip,
   saveTrip,
-  tripStillActive,
   type StoredTrip,
 } from "@/lib/trip-storage";
 import { parseVoiceCommand, VOICE_HINTS } from "@/lib/voice-commands";
@@ -57,21 +57,37 @@ function speak(text: string) {
   window.speechSynthesis.speak(utterance);
 }
 
+function getBootTrip(): StoredTrip | null {
+  if (typeof window === "undefined") return null;
+  return loadActiveTrip();
+}
+
+const MIC_LABELS = {
+  listening: "Microfone ativo — ouvindo",
+  idle: "Microfone pausado",
+  denied: "Permissão do microfone negada",
+  error: "Erro no microfone — toque para tentar",
+  unsupported: "Voz não suportada neste navegador",
+} as const;
+
 export function DriveMode() {
+  const boot = getBootTrip();
   const qc = useQueryClient();
   const validar = useServerFn(validarOcorrencia);
   const payTollFn = useServerFn(payTolls);
   const geo = useGeolocation();
   const voice = useSpeechRecognition();
 
-  const [phase, setPhase] = useState<TripPhase>("location");
-  const [tripId, setTripId] = useState<string | null>(null);
-  const [destinationQuery, setDestinationQuery] = useState("");
+  const [phase, setPhase] = useState<TripPhase>(boot ? "driving" : "location");
+  const [tripId, setTripId] = useState<string | null>(boot?.tripId ?? null);
+  const [destinationQuery, setDestinationQuery] = useState(
+    boot ? (boot.destination.label.split(",")[0] ?? boot.destination.label) : "",
+  );
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
-  const [destination, setDestination] = useState<GeocodeResult | null>(null);
-  const [route, setRoute] = useState<RouteResult | null>(null);
-  const [tolls, setTolls] = useState<TollOnRoute[]>([]);
-  const [tollTotalCents, setTollTotalCents] = useState(0);
+  const [destination, setDestination] = useState<GeocodeResult | null>(boot?.destination ?? null);
+  const [route, setRoute] = useState<RouteResult | null>(boot?.route ?? null);
+  const [tolls, setTolls] = useState<TollOnRoute[]>(boot?.tolls ?? []);
+  const [tollTotalCents, setTollTotalCents] = useState(boot?.tollTotalCents ?? 0);
   const [tollPaid, setTollPaid] = useState(false);
   const [routing, setRouting] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -83,14 +99,15 @@ export function DriveMode() {
   const [tollDialogOpen, setTollDialogOpen] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [tripReports, setTripReports] = useState<TripReportMarker[]>([]);
-  const [restored, setRestored] = useState(false);
 
   const phaseRef = useRef(phase);
   const coordsRef = useRef(geo.coords);
   const tripIdRef = useRef(tripId);
   const submittingRef = useRef(false);
   const lastVoiceAtRef = useRef(0);
+  const handleVoiceRef = useRef<(text: string) => void>(() => {});
   const autoGpsStarted = useRef(false);
+  const bootSynced = useRef(false);
 
   phaseRef.current = phase;
   coordsRef.current = geo.coords;
@@ -111,104 +128,57 @@ export function DriveMode() {
     },
   });
 
-  const finishTrip = useCallback(
-    async (status: "completed" | "expired") => {
-      const id = tripIdRef.current;
-      if (id) {
-        await supabase
-          .from("trips")
-          .update({ status, completed_at: new Date().toISOString() })
-          .eq("id", id);
-      }
-      clearTrip();
-      setTripId(null);
-      setRoute(null);
-      setTolls([]);
-      setTollTotalCents(0);
-      setTollPaid(false);
-      setTripReports([]);
-      setPhase("route");
-      toast.message(status === "completed" ? "Viagem concluída!" : "Rota expirada");
-      if (status === "completed") speak("Viagem concluída. Boa chegada!");
-    },
-    [],
-  );
+  const finishTrip = useCallback(async (status: "completed" | "expired") => {
+    const id = tripIdRef.current;
+    if (id) {
+      await supabase
+        .from("trips")
+        .update({ status, completed_at: new Date().toISOString() })
+        .eq("id", id);
+    }
+    voice.stop();
+    clearTrip();
+    setTripId(null);
+    setRoute(null);
+    setTolls([]);
+    setTollTotalCents(0);
+    setTollPaid(false);
+    setTripReports([]);
+    setPhase("route");
+    toast.message(status === "completed" ? "Viagem concluída!" : "Rota expirada");
+    if (status === "completed") speak("Viagem concluída. Boa chegada!");
+  }, [voice]);
 
   const persistTrip = useCallback(
-    (id: string, dest: GeocodeResult, r: RouteResult, tollData: ReturnType<typeof calculateTollsAlongRoute>) => {
+    (
+      id: string,
+      dest: GeocodeResult,
+      r: RouteResult,
+      tollData: ReturnType<typeof calculateTollsAlongRoute>,
+      keepReportIds?: string[],
+    ) => {
+      const existing = loadTrip();
       const stored: StoredTrip = {
         tripId: id,
         destination: dest,
         route: r,
         tolls: tollData.tolls,
         tollTotalCents: tollData.totalCents,
-        startedAt: Date.now(),
+        startedAt: existing?.tripId === id ? existing.startedAt : Date.now(),
         expiresAt: createTripExpiry(r.durationSeconds),
-        reportIds: [],
+        reportIds: keepReportIds ?? (existing?.tripId === id ? existing.reportIds : []),
       };
       saveTrip(stored);
     },
     [],
   );
 
-  const restoreTrip = useCallback(
-    async (stored: StoredTrip) => {
-      setTripId(stored.tripId);
-      setDestination(stored.destination);
-      setRoute(stored.route);
-      setTolls(stored.tolls);
-      setTollTotalCents(stored.tollTotalCents);
-      setDestinationQuery(stored.destination.label.split(",")[0] ?? stored.destination.label);
-      setPhase("driving");
-
-      const { data: reports } = await supabase
-        .from("reports")
-        .select("id, latitude, longitude, categoria")
-        .eq("trip_id", stored.tripId);
-
-      if (reports?.length) {
-        setTripReports(
-          reports.map((r) => ({
-            id: r.id,
-            lat: r.latitude,
-            lng: r.longitude,
-            categoria: r.categoria as CategoriaKey,
-          })),
-        );
-      }
-
-      const { data: paid } = await supabase
-        .from("toll_payments")
-        .select("id")
-        .eq("trip_id", stored.tripId)
-        .eq("status", "paid")
-        .maybeSingle();
-      setTollPaid(!!paid);
-
-      toast.success("Rota retomada");
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (restored) return;
-    const stored = loadTrip();
-    if (stored && tripStillActive(stored, geo.coords)) {
-      restoreTrip(stored);
-    } else if (stored) {
-      const status = isTripCompleted(stored, geo.coords) ? "completed" : "expired";
-      supabase.from("trips").update({ status, completed_at: new Date().toISOString() }).eq("id", stored.tripId);
-      clearTrip();
-    }
-    setRestored(true);
-  }, [restored, geo.coords, restoreTrip]);
-
   const handleVoice = useCallback(
     async (text: string) => {
       if (phaseRef.current !== "driving" || !coordsRef.current || submittingRef.current) return;
 
       const now = Date.now();
-      if (now - lastVoiceAtRef.current < 2500) return;
+      if (now - lastVoiceAtRef.current < 1200) return;
       lastVoiceAtRef.current = now;
 
       setLastVoice(text);
@@ -271,13 +241,21 @@ export function DriveMode() {
     [validar, qc],
   );
 
-  useEffect(() => {
-    if (phase === "driving" && voice.supported) {
-      const ok = voice.start(handleVoice);
-      if (!ok) toast.error("Não foi possível iniciar o microfone");
-      return () => voice.stop();
+  handleVoiceRef.current = handleVoice;
+
+  const startVoice = useCallback(async () => {
+    const ok = await voice.start((text) => handleVoiceRef.current(text));
+    if (!ok && voice.status === "denied") {
+      toast.error("Permita o microfone nas configurações do navegador");
     }
-  }, [phase, voice.supported, handleVoice]); // eslint-disable-line react-hooks/exhaustive-deps
+    return ok;
+  }, [voice]);
+
+  useEffect(() => {
+    if (phase !== "driving" || !voice.supported) return;
+    startVoice();
+    return () => voice.stop();
+  }, [phase, voice.supported]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!autoGpsStarted.current) {
@@ -289,6 +267,39 @@ export function DriveMode() {
   useEffect(() => {
     if (geo.coords && phase === "location") setPhase("route");
   }, [geo.coords, phase]);
+
+  useEffect(() => {
+    if (bootSynced.current) return;
+    bootSynced.current = true;
+    const saved = loadActiveTrip();
+    if (!saved) return;
+
+    (async () => {
+      const { data: reports } = await supabase
+        .from("reports")
+        .select("id, latitude, longitude, categoria")
+        .eq("trip_id", saved.tripId);
+
+      if (reports?.length) {
+        setTripReports(
+          reports.map((r) => ({
+            id: r.id,
+            lat: r.latitude,
+            lng: r.longitude,
+            categoria: r.categoria as CategoriaKey,
+          })),
+        );
+      }
+
+      const { data: paid } = await supabase
+        .from("toll_payments")
+        .select("id")
+        .eq("trip_id", saved.tripId)
+        .eq("status", "paid")
+        .maybeSingle();
+      setTollPaid(!!paid);
+    })();
+  }, []);
 
   useEffect(() => {
     if (phase !== "driving" || !tripId) return;
@@ -306,8 +317,8 @@ export function DriveMode() {
 
   useEffect(() => {
     const q = destinationQuery.trim();
-    if (q.length < 3 || phase === "driving") {
-      if (phase !== "route") setSuggestions([]);
+    if (q.length < 3) {
+      setSuggestions([]);
       return;
     }
     const timer = setTimeout(async () => {
@@ -321,7 +332,7 @@ export function DriveMode() {
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [destinationQuery, phase]);
+  }, [destinationQuery]);
 
   useEffect(() => {
     if (vehicles?.length && !selectedVehicleId) {
@@ -331,6 +342,8 @@ export function DriveMode() {
 
   async function buildRoute(dest: GeocodeResult) {
     if (!geo.coords) return toast.error("Ative a localização primeiro");
+    const isUpdate = !!tripId && phase === "driving";
+
     setDestination(dest);
     setSuggestions([]);
     setDestinationQuery(dest.label.split(",")[0] ?? dest.label);
@@ -340,15 +353,15 @@ export function DriveMode() {
     try {
       const r = await fetchDrivingRoute(geo.coords, dest);
       const tollData = calculateTollsAlongRoute(r.coordinates);
-      const id = crypto.randomUUID();
+      const id = tripId ?? crypto.randomUUID();
       const expiresAt = new Date(createTripExpiry(r.durationSeconds)).toISOString();
+      const existing = loadTrip();
+      const keepReportIds = isUpdate && existing?.tripId === id ? existing.reportIds : [];
 
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) throw new Error("Sessão expirada");
 
-      const { error } = await supabase.from("trips").insert({
-        id,
-        user_id: u.user.id,
+      const payload = {
         destination_label: dest.label,
         destination_lat: dest.lat,
         destination_lng: dest.lng,
@@ -357,30 +370,35 @@ export function DriveMode() {
         duration_seconds: Math.round(r.durationSeconds),
         toll_total_cents: tollData.totalCents,
         toll_details: tollData.tolls,
-        status: "active",
+        status: "active" as const,
         expires_at: expiresAt,
-      });
+      };
 
-      if (error) throw error;
+      if (tripId) {
+        const { error } = await supabase.from("trips").update(payload).eq("id", tripId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("trips").insert({ id, user_id: u.user.id, ...payload });
+        if (error) throw error;
+        setTripReports([]);
+      }
 
       setTripId(id);
       setRoute(r);
       setTolls(tollData.tolls);
       setTollTotalCents(tollData.totalCents);
-      setTollPaid(false);
-      setTripReports([]);
+      if (!isUpdate) setTollPaid(false);
       setPhase("driving");
-      persistTrip(id, dest, r, tollData);
+      persistTrip(id, dest, r, tollData, keepReportIds);
 
-      const tollMsg =
-        tollData.totalCents > 0
-          ? ` Pedágios estimados: ${formatBRL(tollData.totalCents)}.`
-          : "";
-      speak(
-        `Rota definida. ${formatDistance(r.distanceMeters)}, cerca de ${formatDuration(r.durationSeconds)}.${tollMsg} Pode reportar por voz.`,
-      );
-      toast.success("Percurso definido. Comandos de voz ativos.");
-      if (tollData.totalCents > 0) setTollDialogOpen(true);
+      const action = isUpdate ? "Rota atualizada" : "Percurso definido";
+      speak(`${action}. ${formatDistance(r.distanceMeters)}, cerca de ${formatDuration(r.durationSeconds)}.`);
+      toast.success(isUpdate ? "Rota atualizada para o novo destino" : "Percurso definido. Comandos de voz ativos.");
+      if (!isUpdate && tollData.totalCents > 0) setTollDialogOpen(true);
+
+      if (phase === "driving" || isUpdate) {
+        await startVoice();
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Não foi possível traçar a rota";
       toast.error(msg);
@@ -422,6 +440,8 @@ export function DriveMode() {
   }
 
   const showSearch = phase === "route" || phase === "driving" || searchFocused;
+  const micStatus = voice.supported ? voice.status : "unsupported";
+  const micLabel = MIC_LABELS[micStatus as keyof typeof MIC_LABELS] ?? MIC_LABELS.idle;
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-background">
@@ -450,21 +470,27 @@ export function DriveMode() {
                 <Input
                   value={destinationQuery}
                   onChange={(e) => setDestinationQuery(e.target.value)}
-                  onFocus={() => {
-                    if (phase === "driving") {
-                      toast.message("Rota ativa", {
-                        description: "A rota atual permanece até você chegar ou o tempo estimado expirar.",
-                      });
-                      return;
-                    }
-                    setSearchFocused(true);
-                  }}
-                  readOnly={phase === "driving"}
-                  placeholder={phase === "driving" ? destination?.label.split(",")[0] ?? "Em viagem" : "Para onde?"}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => window.setTimeout(() => setSearchFocused(false), 200)}
+                  placeholder={phase === "driving" ? "Alterar destino..." : "Para onde?"}
                   className="h-11 rounded-full border-0 bg-card pl-10 pr-10 shadow-lg"
                 />
                 {(searching || routing) && (
                   <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                )}
+                {destinationQuery && !searching && !routing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDestinationQuery(phase === "driving" && destination
+                        ? destination.label.split(",")[0] ?? ""
+                        : "");
+                      setSuggestions([]);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 )}
               </div>
             ) : (
@@ -484,7 +510,7 @@ export function DriveMode() {
             )}
           </div>
 
-          {suggestions.length > 0 && showSearch && phase !== "driving" && (
+          {suggestions.length > 0 && showSearch && (
             <ul className="max-h-52 overflow-y-auto rounded-2xl border bg-card shadow-2xl">
               {suggestions.map((s) => (
                 <li key={`${s.lat}-${s.lng}`}>
@@ -511,6 +537,15 @@ export function DriveMode() {
               {phase === "driving" && route && (
                 <span className="rounded-full bg-card px-3 py-1 text-xs font-medium shadow">
                   {formatDistance(route.distanceMeters)} · {formatDuration(route.durationSeconds)}
+                </span>
+              )}
+              {phase === "driving" && (
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-medium shadow ${
+                    voice.listening ? "bg-destructive text-destructive-foreground" : "bg-card"
+                  }`}
+                >
+                  {micLabel}
                 </span>
               )}
               {phase === "driving" && tollTotalCents > 0 && (
@@ -556,13 +591,7 @@ export function DriveMode() {
           <div className="pointer-events-auto mx-3 mb-4 rounded-2xl border bg-card/95 p-4 shadow-2xl backdrop-blur-xl">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Destino</p>
             <p className="font-medium leading-snug">{destination.label.split(",").slice(0, 2).join(",")}</p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {voice.listening
-                ? "Ouvindo... diga: animal na pista, acidente, veículo parado..."
-                : voice.supported
-                  ? "Toque no microfone para reportar por voz"
-                  : "Use Chrome no celular para comandos de voz"}
-            </p>
+            <p className="mt-2 text-xs text-muted-foreground">{micLabel}</p>
             {tripReports.length > 0 && (
               <p className="mt-1 text-xs text-primary">{tripReports.length} reporte(s) nesta viagem no mapa</p>
             )}
@@ -595,7 +624,7 @@ export function DriveMode() {
       )}
 
       {tollDialogOpen && tollTotalCents > 0 && (
-        <div className="pointer-events-auto absolute inset-x-3 bottom-24 z-50 rounded-2xl border bg-card p-4 shadow-2xl">
+        <div className="pointer-events-auto absolute inset-x-3 bottom-28 z-50 rounded-2xl border bg-card p-4 shadow-2xl">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-display text-lg font-bold">Pedágios na rota</h3>
@@ -654,16 +683,22 @@ export function DriveMode() {
       {phase === "driving" && (
         <button
           type="button"
-          disabled={submitting}
-          onClick={() => {
-            if (voice.listening) voice.stop();
-            else voice.start(handleVoice);
+          disabled={submitting || !voice.supported}
+          onClick={async () => {
+            if (voice.listening) {
+              voice.stop();
+            } else {
+              await startVoice();
+            }
           }}
-          className={`pointer-events-auto absolute bottom-24 right-4 flex h-16 w-16 items-center justify-center rounded-full shadow-2xl transition ${
+          className={`pointer-events-auto absolute bottom-28 right-4 flex h-16 w-16 flex-col items-center justify-center rounded-full shadow-2xl transition ${
             voice.listening
               ? "bg-destructive text-destructive-foreground animate-pulse"
-              : "bg-primary text-primary-foreground"
+              : voice.status === "denied"
+                ? "bg-muted text-muted-foreground"
+                : "bg-primary text-primary-foreground"
           }`}
+          title={micLabel}
         >
           {submitting ? (
             <Loader2 className="h-7 w-7 animate-spin" />

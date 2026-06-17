@@ -30,6 +30,13 @@ export function loadTrip(): StoredTrip | null {
   }
 }
 
+/** Viagem salva ainda válida por tempo (ignora GPS no boot) */
+export function loadActiveTrip(): StoredTrip | null {
+  const trip = loadTrip();
+  if (!trip || isTripExpired(trip)) return null;
+  return trip;
+}
+
 export function clearTrip() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEY);

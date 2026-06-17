@@ -28,6 +28,7 @@ export function TripMap({ coords, route, tracking, reports, tolls }: Props) {
   const tollLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const lastPanRef = useRef(0);
   const targetRef = useRef<{ lat: number; lng: number } | null>(null);
+  const routeKeyRef = useRef("");
 
   useEffect(() => {
     let cancelled = false;
@@ -78,8 +79,8 @@ export function TripMap({ coords, route, tracking, reports, tolls }: Props) {
         const now = Date.now();
         if (now - lastPanRef.current > 80) {
           const center = map.getCenter();
-          const nextLat = center.lat + (target.lat - center.lat) * 0.18;
-          const nextLng = center.lng + (target.lng - center.lng) * 0.18;
+          const nextLat = center.lat + (target.lat - center.lat) * 0.22;
+          const nextLng = center.lng + (target.lng - center.lng) * 0.22;
           map.panTo([nextLat, nextLng], { animate: false, noMoveStart: true });
           lastPanRef.current = now;
         }
@@ -108,20 +109,25 @@ export function TripMap({ coords, route, tracking, reports, tolls }: Props) {
       } else {
         userMarkerRef.current.setLatLng([coords.lat, coords.lng]);
       }
-
-      if (tracking && coords.heading != null && !Number.isNaN(coords.heading)) {
-        const el = userMarkerRef.current.getElement();
-        if (el) el.style.transform += ` rotate(${coords.heading}deg)`;
-      }
     })();
-  }, [coords, tracking]);
+  }, [coords]);
 
   useEffect(() => {
-    if (!mapRef.current || !route?.coordinates.length) return;
+    if (!route?.coordinates.length) return;
+
+    const key = `${route.coordinates.length}-${route.distanceMeters}`;
+    let cancelled = false;
+
     (async () => {
       const L = (await import("leaflet")).default;
-      const map = mapRef.current!;
 
+      for (let i = 0; i < 40 && !mapRef.current; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        if (cancelled) return;
+      }
+      if (!mapRef.current) return;
+
+      const map = mapRef.current;
       routeLayerRef.current?.remove();
       routeLayerRef.current = L.polyline(route.coordinates, {
         color: "#2563EB",
@@ -131,11 +137,16 @@ export function TripMap({ coords, route, tracking, reports, tolls }: Props) {
         lineJoin: "round",
       }).addTo(map);
 
-      if (!tracking) {
-        map.fitBounds(routeLayerRef.current.getBounds(), { padding: [80, 48] });
-      }
+      const bounds = routeLayerRef.current.getBounds();
+      if (coords) bounds.extend([coords.lat, coords.lng]);
+      map.fitBounds(bounds, { padding: [80, 48], maxZoom: 15 });
+      routeKeyRef.current = key;
     })();
-  }, [route, tracking]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [route, coords]);
 
   useEffect(() => {
     if (!mapRef.current || !reportLayerRef.current) return;

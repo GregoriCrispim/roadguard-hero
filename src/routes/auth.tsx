@@ -22,12 +22,32 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const nav = useNavigate();
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) nav({ to: "/app", replace: true });
     });
+
+    const params = new URLSearchParams(window.location.search);
+    const authError = params.get("error_description") ?? params.get("error");
+    if (authError) toast.error(decodeURIComponent(authError.replace(/\+/g, " ")));
   }, [nav]);
+
+  async function handleGoogle() {
+    setGoogleLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/app`,
+        queryParams: { access_type: "offline", prompt: "consent" },
+      },
+    });
+    if (error) {
+      toast.error(authErrorMessage(error));
+      setGoogleLoading(false);
+    }
+  }
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
@@ -52,7 +72,16 @@ function AuthPage() {
           <h1 className="font-display text-3xl font-bold">Bem-vindo, Guardião</h1>
           <p className="mt-1 text-muted-foreground">Entre ou crie sua conta para começar.</p>
 
-          <Tabs defaultValue="login" className="mt-6">
+          <Button onClick={handleGoogle} disabled={googleLoading} variant="outline" className="mt-6 w-full gap-2">
+            {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
+            Continuar com Google
+          </Button>
+
+          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="h-px flex-1 bg-border" /> ou e-mail <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <Tabs defaultValue="login">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Entrar</TabsTrigger>
               <TabsTrigger value="signup">Criar conta</TabsTrigger>
@@ -164,5 +193,13 @@ function SignupForm() {
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar conta de Guardião"}
       </Button>
     </form>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
+      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.4-1.6 4.1-5.5 4.1-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.5 14.6 2.5 12 2.5 6.7 2.5 2.5 6.7 2.5 12s4.2 9.5 9.5 9.5c5.5 0 9.1-3.9 9.1-9.3 0-.6-.1-1.1-.2-1.6H12z" />
+    </svg>
   );
 }

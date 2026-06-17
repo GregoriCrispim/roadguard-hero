@@ -584,20 +584,6 @@ export function DriveMode() {
           </div>
         )}
 
-        {phase === "driving" && destination && !voice.listening && voice.status !== "listening" && (
-          <div className="pointer-events-auto mx-3 mb-3">
-            <Button
-              type="button"
-              size="lg"
-              className="w-full gap-2 shadow-xl"
-              onClick={enableMic}
-            >
-              <Mic className="h-5 w-5" />
-              Ativar microfone para reportar por voz
-            </Button>
-          </div>
-        )}
-
         {phase === "driving" && destination && (
           <div className="pointer-events-auto mx-3 mb-4 rounded-2xl border bg-card/95 p-4 shadow-2xl backdrop-blur-xl">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Destino</p>

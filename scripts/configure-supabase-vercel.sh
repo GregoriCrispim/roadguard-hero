@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Requires: SUPABASE_ACCESS_TOKEN (from https://supabase.com/dashboard/account/tokens)
 
-PROJECT_REF="gxhlbiyflpzhhwiqhldr"
+PROJECT_REF="muotvbxyfhjxmlipprlz"
 VERCEL_PROD_URL="https://roadguard-hero.vercel.app"
 
 if [[ -z "${SUPABASE_ACCESS_TOKEN:-}" ]]; then

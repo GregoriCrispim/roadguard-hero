@@ -64,8 +64,9 @@ function getBootTrip(): StoredTrip | null {
 
 const MIC_LABELS = {
   listening: "Microfone ativo — ouvindo",
-  idle: "Microfone pausado",
-  denied: "Permissão do microfone negada",
+  idle: "Toque no microfone para ativar",
+  prompt: "Solicitando permissão...",
+  denied: "Permissão negada — toque para tentar de novo",
   error: "Erro no microfone — toque para tentar",
   unsupported: "Voz não suportada neste navegador",
 } as const;
@@ -243,19 +244,17 @@ export function DriveMode() {
 
   handleVoiceRef.current = handleVoice;
 
-  const startVoice = useCallback(async () => {
-    const ok = await voice.start((text) => handleVoiceRef.current(text));
-    if (!ok && voice.status === "denied") {
-      toast.error("Permita o microfone nas configurações do navegador");
+  const enableMic = useCallback(() => {
+    if (!voice.supported) {
+      toast.error("Use Chrome no celular para comandos de voz");
+      return false;
+    }
+    const ok = voice.enableFromGesture((text) => handleVoiceRef.current(text));
+    if (!ok) {
+      toast.error("Não foi possível iniciar o microfone. Toque novamente e permita o acesso.");
     }
     return ok;
   }, [voice]);
-
-  useEffect(() => {
-    if (phase !== "driving" || !voice.supported) return;
-    startVoice();
-    return () => voice.stop();
-  }, [phase, voice.supported]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!autoGpsStarted.current) {
@@ -392,13 +391,11 @@ export function DriveMode() {
       persistTrip(id, dest, r, tollData, keepReportIds);
 
       const action = isUpdate ? "Rota atualizada" : "Percurso definido";
-      speak(`${action}. ${formatDistance(r.distanceMeters)}, cerca de ${formatDuration(r.durationSeconds)}.`);
-      toast.success(isUpdate ? "Rota atualizada para o novo destino" : "Percurso definido. Comandos de voz ativos.");
+      speak(
+        `${action}. ${formatDistance(r.distanceMeters)}, cerca de ${formatDuration(r.durationSeconds)}. Toque no microfone para reportar.`,
+      );
+      toast.success(isUpdate ? "Rota atualizada para o novo destino" : "Percurso definido. Toque no microfone para reportar por voz.");
       if (!isUpdate && tollData.totalCents > 0) setTollDialogOpen(true);
-
-      if (phase === "driving" || isUpdate) {
-        await startVoice();
-      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Não foi possível traçar a rota";
       toast.error(msg);
@@ -587,6 +584,20 @@ export function DriveMode() {
           </div>
         )}
 
+        {phase === "driving" && destination && !voice.listening && voice.status !== "listening" && (
+          <div className="pointer-events-auto mx-3 mb-3">
+            <Button
+              type="button"
+              size="lg"
+              className="w-full gap-2 shadow-xl"
+              onClick={enableMic}
+            >
+              <Mic className="h-5 w-5" />
+              Ativar microfone para reportar por voz
+            </Button>
+          </div>
+        )}
+
         {phase === "driving" && destination && (
           <div className="pointer-events-auto mx-3 mb-4 rounded-2xl border bg-card/95 p-4 shadow-2xl backdrop-blur-xl">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Destino</p>
@@ -684,11 +695,11 @@ export function DriveMode() {
         <button
           type="button"
           disabled={submitting || !voice.supported}
-          onClick={async () => {
+          onClick={() => {
             if (voice.listening) {
               voice.stop();
             } else {
-              await startVoice();
+              enableMic();
             }
           }}
           className={`pointer-events-auto absolute bottom-28 right-4 flex h-16 w-16 flex-col items-center justify-center rounded-full shadow-2xl transition ${

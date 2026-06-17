@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type SpeechRecognitionCtor = new () => SpeechRecognition;
 
-export type MicStatus = "unsupported" | "idle" | "listening" | "error" | "denied";
+export type MicStatus = "unsupported" | "idle" | "listening" | "error" | "denied" | "prompt";
 
 function getSpeechRecognition(): SpeechRecognitionCtor | null {
   if (typeof window === "undefined") return null;
@@ -11,6 +11,16 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
     webkitSpeechRecognition?: SpeechRecognitionCtor;
   };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+async function queryMicPermission(): Promise<PermissionState | "unknown"> {
+  if (!navigator.permissions?.query) return "unknown";
+  try {
+    const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
+    return result.state;
+  } catch {
+    return "unknown";
+  }
 }
 
 export function useSpeechRecognition(lang = "pt-BR") {
@@ -23,12 +33,13 @@ export function useSpeechRecognition(lang = "pt-BR") {
 
   const startRecognition = useCallback(() => {
     const recognition = recognitionRef.current;
-    if (!recognition || !shouldListenRef.current) return;
+    if (!recognition || !shouldListenRef.current) return false;
     try {
       recognition.start();
       setStatus("listening");
+      return true;
     } catch {
-      /* já em execução */
+      return false;
     }
   }, []);
 
@@ -58,9 +69,11 @@ export function useSpeechRecognition(lang = "pt-BR") {
       }
     };
 
+    recognition.onstart = () => setStatus("listening");
+
     recognition.onend = () => {
       if (shouldListenRef.current) {
-        window.setTimeout(startRecognition, 250);
+        window.setTimeout(() => startRecognition(), 300);
       } else {
         setStatus("idle");
       }
@@ -79,6 +92,11 @@ export function useSpeechRecognition(lang = "pt-BR") {
 
     recognitionRef.current = recognition;
 
+    void queryMicPermission().then((state) => {
+      if (state === "granted") setStatus("idle");
+      if (state === "denied") setStatus("denied");
+    });
+
     return () => {
       shouldListenRef.current = false;
       try {
@@ -90,29 +108,63 @@ export function useSpeechRecognition(lang = "pt-BR") {
     };
   }, [lang, startRecognition]);
 
-  const requestMic = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) return true;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop());
+  /**
+   * Deve ser chamado diretamente de um clique/toque do usuário.
+   * Inicia o reconhecimento na mesma cadeia do gesto para o navegador exibir o prompt.
+   */
+  const enableFromGesture = useCallback(
+    (onResult: (text: string) => void) => {
+      if (!recognitionRef.current) return false;
+
+      onResultRef.current = onResult;
+      shouldListenRef.current = true;
+      setStatus("prompt");
+
+      const started = startRecognition();
+
+      if (navigator.mediaDevices?.getUserMedia) {
+        navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then((stream) => stream.getTracks().forEach((t) => t.stop()))
+          .catch(() => {
+            if (!started) setStatus("denied");
+          });
+      }
+
+      if (!started) {
+        setStatus("error");
+        return false;
+      }
       return true;
-    } catch {
-      setStatus("denied");
-      return false;
-    }
-  }, []);
+    },
+    [startRecognition],
+  );
 
   const start = useCallback(
     async (onResult: (text: string) => void) => {
       if (!recognitionRef.current) return false;
-      const permitted = await requestMic();
-      if (!permitted) return false;
+
+      const perm = await queryMicPermission();
+      if (perm === "denied") {
+        setStatus("denied");
+        return false;
+      }
+
+      if (navigator.mediaDevices?.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((t) => t.stop());
+        } catch {
+          setStatus("denied");
+          return false;
+        }
+      }
+
       onResultRef.current = onResult;
       shouldListenRef.current = true;
-      startRecognition();
-      return true;
+      return startRecognition();
     },
-    [requestMic, startRecognition],
+    [startRecognition],
   );
 
   const stop = useCallback(() => {
@@ -130,6 +182,7 @@ export function useSpeechRecognition(lang = "pt-BR") {
     listening: status === "listening",
     status,
     transcript,
+    enableFromGesture,
     start,
     stop,
   };

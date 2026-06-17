@@ -6,9 +6,10 @@ export type SubmitReportInput = {
   descricao?: string;
   lat: number;
   lng: number;
+  tripId?: string;
 };
 
-export async function submitReport({ categoria, descricao = "", lat, lng }: SubmitReportInput) {
+export async function submitReport({ categoria, descricao = "", lat, lng, tripId }: SubmitReportInput) {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) throw new Error("Sessão expirada");
 
@@ -21,6 +22,7 @@ export async function submitReport({ categoria, descricao = "", lat, lng }: Subm
       latitude: lat,
       longitude: lng,
       foto_url: null,
+      trip_id: tripId ?? null,
     })
     .select()
     .single();

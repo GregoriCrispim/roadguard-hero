@@ -51,7 +51,11 @@ export function useSpeechRecognition(lang = "pt-BR") {
       }
     };
 
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (event) => {
+      const err = (event as SpeechRecognitionErrorEvent).error;
+      if (err === "no-speech" || err === "aborted") return;
+      setListening(false);
+    };
     recognitionRef.current = recognition as SpeechRecognition & { _shouldRestart?: boolean };
 
     return () => {

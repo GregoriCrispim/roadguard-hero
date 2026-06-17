@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RoadHeroLogo } from "@/components/RoadHeroLogo";
+import { authErrorMessage } from "@/lib/auth-errors";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
@@ -36,7 +37,7 @@ function AuthPage() {
       options: { redirectTo: `${window.location.origin}/app` },
     });
     if (error) {
-      toast.error("Erro no login com Google");
+      toast.error("Erro no login com Google. Configure o provedor Google no painel Supabase.");
       setLoading(false);
     }
   }
@@ -98,7 +99,7 @@ function LoginForm() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
     setLoading(false);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(authErrorMessage(error));
     toast.success("Bem-vindo de volta!");
     nav({ to: "/app", replace: true });
   }
@@ -106,7 +107,7 @@ function LoginForm() {
   async function reset() {
     if (!email) return toast.error("Informe seu e-mail acima primeiro");
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + "/auth" });
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(authErrorMessage(error));
     toast.success("Enviamos um link de recuperação");
   }
 
@@ -141,7 +142,7 @@ function SignupForm() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password: senha,
       options: {
@@ -150,9 +151,15 @@ function SignupForm() {
       },
     });
     setLoading(false);
-    if (error) return toast.error(error.message);
-    toast.success("Conta criada! Verifique seu e-mail.");
-    nav({ to: "/app", replace: true });
+    if (error) return toast.error(authErrorMessage(error));
+
+    if (data.session) {
+      toast.success("Conta criada com sucesso!");
+      nav({ to: "/app", replace: true });
+      return;
+    }
+
+    toast.success("Conta criada! Verifique seu e-mail para confirmar o cadastro.");
   }
 
   return (

@@ -79,7 +79,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { name: "theme-color", content: "#0F172A" },
+      { name: "theme-color", content: "#003A70" },
       { title: "RoadHero — Milhões de olhos protegendo nossas rodovias" },
       { name: "description", content: "Plataforma colaborativa que transforma motoristas em agentes ativos da segurança viária com IA e gamificação." },
       { property: "og:type", content: "website" },
@@ -110,7 +110,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR" className="dark">
+    <html lang="pt-BR">
       <head>
         <HeadContent />
       </head>

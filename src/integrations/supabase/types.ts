@@ -14,16 +14,197 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          cidade: string | null
+          created_at: string
+          id: string
+          nivel: string
+          nome: string
+          pontos: number
+          updated_at: string
+        }
+        Insert: {
+          cidade?: string | null
+          created_at?: string
+          id: string
+          nivel?: string
+          nome?: string
+          pontos?: number
+          updated_at?: string
+        }
+        Update: {
+          cidade?: string | null
+          created_at?: string
+          id?: string
+          nivel?: string
+          nome?: string
+          pontos?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      redemptions: {
+        Row: {
+          created_at: string
+          id: string
+          pontos_gastos: number
+          reward_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          pontos_gastos: number
+          reward_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          pontos_gastos?: number
+          reward_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "redemptions_reward_id_fkey"
+            columns: ["reward_id"]
+            isOneToOne: false
+            referencedRelation: "rewards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reports: {
+        Row: {
+          audio_url: string | null
+          categoria: Database["public"]["Enums"]["report_categoria"]
+          created_at: string
+          descricao: string | null
+          foto_url: string | null
+          gravidade: Database["public"]["Enums"]["report_gravidade"] | null
+          id: string
+          latitude: number
+          longitude: number
+          rodovia: string | null
+          score_ia: number | null
+          status: Database["public"]["Enums"]["report_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          audio_url?: string | null
+          categoria: Database["public"]["Enums"]["report_categoria"]
+          created_at?: string
+          descricao?: string | null
+          foto_url?: string | null
+          gravidade?: Database["public"]["Enums"]["report_gravidade"] | null
+          id?: string
+          latitude: number
+          longitude: number
+          rodovia?: string | null
+          score_ia?: number | null
+          status?: Database["public"]["Enums"]["report_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          audio_url?: string | null
+          categoria?: Database["public"]["Enums"]["report_categoria"]
+          created_at?: string
+          descricao?: string | null
+          foto_url?: string | null
+          gravidade?: Database["public"]["Enums"]["report_gravidade"] | null
+          id?: string
+          latitude?: number
+          longitude?: number
+          rodovia?: string | null
+          score_ia?: number | null
+          status?: Database["public"]["Enums"]["report_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      rewards: {
+        Row: {
+          ativo: boolean
+          categoria: string | null
+          created_at: string
+          custo_pontos: number
+          descricao: string | null
+          id: string
+          nome: string
+        }
+        Insert: {
+          ativo?: boolean
+          categoria?: string | null
+          created_at?: string
+          custo_pontos: number
+          descricao?: string | null
+          id?: string
+          nome: string
+        }
+        Update: {
+          ativo?: boolean
+          categoria?: string | null
+          created_at?: string
+          custo_pontos?: number
+          descricao?: string | null
+          id?: string
+          nome?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      calcular_nivel: { Args: { _pontos: number }; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "user" | "concessionaria" | "admin"
+      report_categoria:
+        | "animal_na_pista"
+        | "veiculo_parado"
+        | "acidente"
+        | "objeto_na_pista"
+        | "incendio"
+        | "risco_seguranca"
+        | "clima_severo"
+        | "suspeita_assalto"
+      report_gravidade: "baixa" | "media" | "alta" | "critica"
+      report_status: "em_analise" | "validado" | "resolvido" | "descartado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +331,20 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["user", "concessionaria", "admin"],
+      report_categoria: [
+        "animal_na_pista",
+        "veiculo_parado",
+        "acidente",
+        "objeto_na_pista",
+        "incendio",
+        "risco_seguranca",
+        "clima_severo",
+        "suspeita_assalto",
+      ],
+      report_gravidade: ["baixa", "media", "alta", "critica"],
+      report_status: ["em_analise", "validado", "resolvido", "descartado"],
+    },
   },
 } as const

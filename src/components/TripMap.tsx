@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CATEGORIAS, type CategoriaKey } from "@/lib/categorias";
 import { bearingBetween } from "@/lib/navigation";
 import type { RouteResult } from "@/lib/routing";
-import type { TollOnRoute } from "@/lib/tolls";
-import { formatBRL, getTollPlazaPosition } from "@/lib/tolls";
+import { formatBRL, getTollMarkerPosition, type TollOnRoute } from "@/lib/tolls";
 import { LocateFixed } from "lucide-react";
 
 export type TripReportMarker = {
@@ -260,17 +259,17 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
       layer.clearLayers();
 
       for (const toll of tolls) {
-        if (toll.estimated) continue;
-        const plaza = getTollPlazaPosition(toll.id);
-        if (!plaza) continue;
+        const pos = getTollMarkerPosition(toll);
         const icon = L.divIcon({
           className: "",
           html: `<div style="padding:2px 6px;border-radius:8px;background:#F59E0B;color:#111;font-size:10px;font-weight:700;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,.35)">$</div>`,
           iconAnchor: [8, 8],
         });
-        L.marker([plaza.lat, plaza.lng], { icon })
+        L.marker([pos.lat, pos.lng], { icon })
           .addTo(layer)
-          .bindPopup(`<b>${toll.name}</b><br/>${toll.highway}<br/>${formatBRL(toll.priceCarCents)}`);
+          .bindPopup(
+            `<b>${toll.name}</b><br/>${toll.highway}<br/>${formatBRL(toll.priceCarCents)}${toll.estimated ? "<br/><small>estimativa</small>" : ""}`,
+          );
       }
     })();
   }, [tolls]);

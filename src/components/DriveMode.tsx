@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import {
   CreditCard,
   Loader2,
+  LogOut,
   MapPin,
   Menu,
   Mic,
@@ -488,10 +489,14 @@ export function DriveMode() {
           saved.route.coordinates,
           saved.route.distanceMeters,
         );
-        if (tollData.totalCents > 0 && saved.tollTotalCents <= 0) {
+        const tollsMissingPosition = saved.tolls?.some(
+          (t) => typeof t.lat !== "number" || typeof t.lng !== "number",
+        );
+        if (tollData.totalCents > 0 && (saved.tollTotalCents <= 0 || tollsMissingPosition)) {
           setTolls(tollData.tolls);
           setTollTotalCents(tollData.totalCents);
           setTollEstimated(tollData.hasEstimate);
+          persistTrip(saved.tripId, saved.destination, saved.route, tollData, saved.reportIds, saved.navigationStarted);
         } else if (saved.tolls?.some((t) => t.estimated)) {
           setTollEstimated(true);
         }
@@ -629,6 +634,37 @@ export function DriveMode() {
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Não foi possível iniciar");
     }
+  }
+
+  async function exitNavigation() {
+    const id = tripIdRef.current;
+    camera.stopCamera();
+    voice.stop();
+
+    if (id) {
+      await supabase
+        .from("trips")
+        .update({ status: "completed", completed_at: new Date().toISOString() })
+        .eq("id", id);
+    }
+
+    clearTrip();
+    setTripId(null);
+    setRoute(null);
+    setDestination(null);
+    setDestinationQuery("");
+    setTolls([]);
+    setTollTotalCents(0);
+    setTollPaid(false);
+    setTripReports([]);
+    setNavigationActive(false);
+    setTollDialogOpen(false);
+    setLastVoice("");
+    setPhase("route");
+    lastRecalcPosRef.current = null;
+    lastRecalcAtRef.current = 0;
+    toast.message("Navegação encerrada");
+    speak("Navegação encerrada");
   }
 
   async function handlePayTolls() {
@@ -884,6 +920,16 @@ export function DriveMode() {
               <Button className="mt-3 w-full gap-2" size="lg" onClick={startNavigation} disabled={routing}>
                 <Navigation className="h-5 w-5" />
                 Iniciar
+              </Button>
+            )}
+            {navigationActive && (
+              <Button
+                variant="outline"
+                className="mt-3 w-full gap-2 border-destructive/40 text-destructive hover:bg-destructive/10"
+                onClick={() => void exitNavigation()}
+              >
+                <LogOut className="h-4 w-4" />
+                Sair da navegação
               </Button>
             )}
           </div>

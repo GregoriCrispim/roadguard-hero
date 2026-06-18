@@ -12,6 +12,8 @@ export type ImersaoCardStep = {
   titulo: string;
   texto: string;
   continuarLabel?: string;
+  /** Avança automaticamente para o próximo passo (ex.: vídeo) após N ms */
+  autoAdvanceMs?: number;
 };
 
 export type ImersaoChoiceOption = {
@@ -45,6 +47,7 @@ export const CORRIDA_PELA_VIDA_INTRO: ImersaoStep[] = [
     texto:
       "A sirene ecoa e o trânsito se abre à sua frente. No banco de trás, um paciente em estado gravíssimo luta por cada segundo. O hospital está longe — e a estrada que você escolher pode ser a diferença entre a vida e a perda.",
     continuarLabel: "Seguir para o hospital",
+    autoAdvanceMs: 6000,
   },
   {
     type: "video",
@@ -90,6 +93,7 @@ export const CORRIDA_PELA_VIDA_RAMOS: Record<string, ImersaoStep[]> = {
       texto:
         "Rodovias administradas por concessionárias contam com central de controle monitorando a pista 24 horas, postos de socorro integrados, acostamento padronizado e equipes de manutenção. Em emergências como a sua, cada minuto ganho na pista pode salvar uma vida — é infraestrutura pensada para quem não pode esperar.",
       continuarLabel: "Continuar a corrida",
+      autoAdvanceMs: 7000,
     },
     {
       type: "video",

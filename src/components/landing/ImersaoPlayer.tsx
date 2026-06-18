@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Building2, Map, Play, Route, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,11 +34,24 @@ function getStepsForJornada(jornadaId: string): ImersaoStep[] {
   }));
 }
 
+async function playVideo(el: HTMLVideoElement) {
+  el.currentTime = 0;
+  try {
+    await el.play();
+  } catch {
+    el.muted = true;
+    try {
+      await el.play();
+    } catch {
+      /* usuário pode tocar nos controles */
+    }
+  }
+}
+
 export function ImersaoPlayer({ jornada, onClose }: Props) {
   const [fase, setFase] = useState<Fase>("briefing");
   const [steps, setSteps] = useState<ImersaoStep[]>(() => getStepsForJornada(jornada.id));
   const [stepIndex, setStepIndex] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   const step = steps[stepIndex];
   const BriefingIcon = jornada.icone;
@@ -52,15 +65,12 @@ export function ImersaoPlayer({ jornada, onClose }: Props) {
     onClose();
   }, [onClose, stepIndex, steps.length]);
 
-  const escolherRota = useCallback(
-    (opcaoId: string) => {
-      const ramo = CORRIDA_PELA_VIDA_RAMOS[opcaoId];
-      if (!ramo) return;
-      setSteps(ramo);
-      setStepIndex(0);
-    },
-    [],
-  );
+  const escolherRota = useCallback((opcaoId: string) => {
+    const ramo = CORRIDA_PELA_VIDA_RAMOS[opcaoId];
+    if (!ramo) return;
+    setSteps(ramo);
+    setStepIndex(0);
+  }, []);
 
   const onVideoEnded = useCallback(() => {
     avancar();
@@ -119,7 +129,9 @@ export function ImersaoPlayer({ jornada, onClose }: Props) {
         <X className="h-4 w-4" />
       </button>
 
-      {step.type === "video" && <VideoStep step={step} videoRef={videoRef} onEnded={onVideoEnded} jornada={jornada} />}
+      {step.type === "video" && (
+        <VideoStep step={step} onEnded={onVideoEnded} jornada={jornada} />
+      )}
       {step.type === "card" && (
         <CardStep
           step={step}
@@ -128,22 +140,30 @@ export function ImersaoPlayer({ jornada, onClose }: Props) {
           isFinal={isLastStep && step.id.startsWith("fim")}
         />
       )}
-      {step.type === "choice" && <ChoiceStep step={step} jornada={jornada} onChoose={escolherRota} />}
+      {step.type === "choice" && (
+        <ChoiceStep step={step} jornada={jornada} onChoose={escolherRota} />
+      )}
     </div>
   );
 }
 
 function VideoStep({
   step,
-  videoRef,
   onEnded,
   jornada,
 }: {
   step: ImersaoVideoStep;
-  videoRef: React.RefObject<HTMLVideoElement | null>;
   onEnded: () => void;
   jornada: ImersaoJornada;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || step.autoPlay === false) return;
+    void playVideo(el);
+  }, [step.src, step.autoPlay]);
+
   return (
     <div className="bg-black">
       <div className="border-b border-white/10 px-4 py-3 text-white">
@@ -156,7 +176,7 @@ function VideoStep({
         className="aspect-video w-full bg-black"
         src={step.src}
         controls
-        autoPlay={step.autoPlay !== false}
+        autoPlay
         playsInline
         preload="auto"
         onEnded={onEnded}
@@ -178,14 +198,53 @@ function CardStep({
   onContinue: () => void;
   isFinal?: boolean;
 }) {
+  const [progress, setProgress] = useState(0);
+  const autoMs = !isFinal ? step.autoAdvanceMs : undefined;
+  const onContinueRef = useRef(onContinue);
+  onContinueRef.current = onContinue;
+
+  useEffect(() => {
+    if (!autoMs) return;
+    const start = Date.now();
+    const tick = window.setInterval(() => {
+      const pct = Math.min(100, ((Date.now() - start) / autoMs) * 100);
+      setProgress(pct);
+    }, 50);
+    const timer = window.setTimeout(() => onContinueRef.current(), autoMs);
+    return () => {
+      window.clearInterval(tick);
+      window.clearTimeout(timer);
+    };
+  }, [autoMs, step.id]);
+
+  function pular() {
+    onContinueRef.current();
+  }
+
   return (
     <div className="p-6 sm:p-8">
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{jornada.jornadaTitulo}</p>
       <h3 className="mt-2 font-display text-2xl font-bold">{step.titulo}</h3>
       <p className="mt-4 text-base leading-relaxed text-muted-foreground">{step.texto}</p>
-      <Button size="lg" className="mt-8 gap-2" onClick={onContinue}>
-        {step.continuarLabel ?? (isFinal ? "Encerrar jornada" : "Continuar")}
-      </Button>
+
+      {autoMs ? (
+        <div className="mt-8 space-y-3">
+          <div className="h-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-[width] duration-100 ease-linear"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">A cena continua automaticamente…</p>
+          <Button size="sm" variant="ghost" onClick={pular}>
+            Pular agora
+          </Button>
+        </div>
+      ) : (
+        <Button size="lg" className="mt-8 gap-2" onClick={onContinue}>
+          {step.continuarLabel ?? (isFinal ? "Encerrar jornada" : "Continuar")}
+        </Button>
+      )}
     </div>
   );
 }
@@ -206,7 +265,7 @@ function ChoiceStep({
       <p className="mt-4 text-base leading-relaxed text-muted-foreground">{step.texto}</p>
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {step.opcoes.map((op) => {
-          const Icon = op.id === "concessionada" ? Building2 : Route;
+          const Icon = op.id === "concessionaria" ? Building2 : Route;
           return (
             <button
               key={op.id}

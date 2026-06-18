@@ -143,7 +143,7 @@ function Landing() {
           {[
             { i: ShieldCheck, t: "Reporte em 10s", d: "Categoria, foto e GPS automáticos. Áudio opcional." },
             { i: Sparkles, t: "Validação Inteligente", d: "IA analisa imagem e texto, classifica gravidade e gera score de confiabilidade." },
-            { i: Trophy, t: "Gamificação real", d: "Pontos, níveis e recompensas que valem cashback em pedágios e combustível." },
+            { i: Trophy, t: "Gamificação real", d: "Pontos, níveis e recompensas em postos, restaurantes, lojas e serviços parceiros." },
           ].map((b) => {
             const Icon = b.i;
             return (
@@ -209,7 +209,7 @@ function Landing() {
               Inspirado em Strava, Waze e Duolingo. Suba de Bronze a Diamante, desbloqueie benefícios e veja seu impacto crescer.
             </p>
             <ul className="mt-6 space-y-3">
-              {["Cashback em pedágios", "Desconto em combustível", "Café grátis na estrada", "Brindes oficiais RoadHero"].map((b) => (
+              {["Desconto em combustível", "Café grátis na estrada", "Serviços automotivos", "Brindes oficiais RoadHero"].map((b) => (
                 <li key={b} className="flex items-center gap-3 text-sm">
                   <CheckCircle2 className="h-4 w-4 text-primary" /> {b}
                 </li>

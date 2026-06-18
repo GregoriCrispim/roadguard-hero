@@ -67,14 +67,22 @@ Use o portal **ABCR** em `/auth`. Acesso a todos os alertas, concessionárias e 
 
 Use o portal **Parceiro** em `/auth`. Gestores cadastram a empresa e recompensas; funcionários validam QR Codes de resgate.
 
+> **Regra:** não é permitido oferecer desconto em pedágio nem cashback de pedágio. Recompensas válidas: combustível, alimentação, conveniência, serviços, hospedagem e brindes.
+
 | E-mail | Empresa | Papel |
 |--------|---------|-------|
 | `posto@roadhero.demo` | Posto Estrada Real | Gestor |
-| `funcionario.posto@roadhero.demo` | Posto Estrada Real | Funcionário (validar QR) |
+| `funcionario.posto@roadhero.demo` / `caixa.posto@roadhero.demo` | Posto Estrada Real | Funcionários |
 | `restaurante@roadhero.demo` | Restaurante Via Sul | Gestor |
-| `funcionario.restaurante@roadhero.demo` | Restaurante Via Sul | Funcionário |
-| `pedagio@roadhero.demo` | TAG Rodovia Fácil | Gestor |
-| `funcionario.pedagio@roadhero.demo` | TAG Rodovia Fácil | Funcionário |
+| `funcionario.restaurante@roadhero.demo` / `cozinha.restaurante@roadhero.demo` | Restaurante Via Sul | Funcionários |
+| `conveniencia@roadhero.demo` | Conveniência Rodo Express | Gestor |
+| `funcionario.conveniencia@roadhero.demo` | Conveniência Rodo Express | Funcionário |
+| `autocenter@roadhero.demo` | Auto Center Rodovia | Gestor |
+| `funcionario.autocenter@roadhero.demo` / `borracheiro.autocenter@roadhero.demo` | Auto Center Rodovia | Funcionários |
+| `descanso@roadhero.demo` | Rede Descanso & Cia | Gestor |
+| `funcionario.descanso@roadhero.demo` | Rede Descanso & Cia | Funcionário |
+| `loja@roadhero.demo` | RoadHero Store | Gestor |
+| `funcionario.loja@roadhero.demo` | RoadHero Store | Funcionário |
 
 **Fluxo de resgate:** Guardião → `/recompensas` → Resgatar → QR Code → Parceiro escaneia em `/parceiro` → pontos abatidos + toast de confirmação.
 
@@ -85,7 +93,7 @@ Use o portal **Parceiro** em `/auth`. Gestores cadastram a empresa e recompensas
 O ambiente de produção está populado com:
 
 - **8 concessionárias** com rotas pedagiadas e pedágios
-- **3 parceiros** com recompensas e contas gestor/funcionário
+- **6 parceiros** com gestores, funcionários e recompensas (sem pedágio/cashback)
 - **~140+ alertas** distribuídos pelo país (últimos 30 dias)
 - Status variados: em análise, validado, resolvido, descartado
 - Categorias: animal na pista, acidente, clima severo, objeto na pista, etc.

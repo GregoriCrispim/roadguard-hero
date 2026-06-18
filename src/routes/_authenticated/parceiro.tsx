@@ -121,7 +121,9 @@ function PartnerOnboarding() {
           <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
             <option value="combustivel">Combustível</option>
             <option value="alimentacao">Alimentação</option>
-            <option value="pedagio">Pedágio</option>
+            <option value="conveniencia">Conveniência</option>
+            <option value="servicos">Serviços automotivos</option>
+            <option value="hospedagem">Hospedagem / descanso</option>
             <option value="brinde">Brinde</option>
             <option value="geral">Geral</option>
           </select>

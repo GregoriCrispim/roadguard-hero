@@ -1,5 +1,8 @@
-# Vídeos da jornada "Corrida pela vida":
-# lv__20260618095425.mp4 — partida
-# lv__20260618101254.mp4 — rumo ao hospital
-# lv__20260618100457.mp4 — via concessionada
-# lv__20260618110228.mp4 — últimos quilômetros
+# Vídeos da jornada Imersão (fonte: Google Drive público RoadHero)
+# Para baixar: python3 scripts/download-imersao-videos.py
+#
+# Usados em Corrida pela vida:
+# lv__20260618095425.mp4 lv__20260618101254.mp4 lv__20260618100457.mp4 lv__20260618110228.mp4
+#
+# Extras no Drive (futuras trilhas):
+# lv__20260618094010.mp4 lv__20260618101904.mp4 lv__20260618114042.mp4

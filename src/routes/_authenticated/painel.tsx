@@ -6,8 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { LevelBadge } from "@/components/LevelBadge";
 import { CATEGORIAS } from "@/lib/categorias";
 import { reconciliarPontos } from "@/lib/reconciliar-pontos.functions";
-import { useIsConcessionaria } from "@/hooks/useUserRole";
-import { Map, Trophy, Gift, Sparkles, Navigation, Loader2, Building2 } from "lucide-react";
+import { useIsConcessionaria, useIsAbcr } from "@/hooks/useUserRole";
+import { Map, Trophy, Gift, Sparkles, Navigation, Loader2, Building2, Globe2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/painel")({
   component: PainelPage,
@@ -17,6 +17,7 @@ function PainelPage() {
   const qc = useQueryClient();
   const reconciliar = useServerFn(reconciliarPontos);
   const { isConcessionaria } = useIsConcessionaria();
+  const { isAbcr } = useIsAbcr();
 
   const { data: profile } = useQuery({
     queryKey: ["me"],
@@ -71,6 +72,14 @@ function PainelPage() {
       <div>
         <h1 className="font-display text-3xl font-bold">Olá, {profile?.nome ?? "Guardião"} 👋</h1>
         <p className="text-muted-foreground">Sua missão: tornar as rodovias mais seguras.</p>
+        {isAbcr && (
+          <Link
+            to="/abcr"
+            className="mt-3 ml-0 inline-flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/5 px-4 py-2 text-sm font-medium text-accent transition hover:bg-accent/10"
+          >
+            <Globe2 className="h-4 w-4" /> Painel Nacional ABCR
+          </Link>
+        )}
         {isConcessionaria && (
           <Link
             to="/concessionaria"

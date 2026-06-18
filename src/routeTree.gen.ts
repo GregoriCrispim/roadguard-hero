@@ -25,6 +25,7 @@ import { Route as AuthenticatedGuardiaoRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedConcessionariaRouteImport } from './routes/_authenticated/concessionaria'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedAbcrRouteImport } from './routes/_authenticated/abcr'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -107,10 +108,16 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAbcrRoute = AuthenticatedAbcrRouteImport.update({
+  id: '/abcr',
+  path: '/abcr',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/abcr': typeof AuthenticatedAbcrRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/app': typeof AuthenticatedAppRoute
   '/concessionaria': typeof AuthenticatedConcessionariaRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/abcr': typeof AuthenticatedAbcrRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/app': typeof AuthenticatedAppRoute
   '/concessionaria': typeof AuthenticatedConcessionariaRoute
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/abcr': typeof AuthenticatedAbcrRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/app': typeof AuthenticatedAppRoute
   '/_authenticated/concessionaria': typeof AuthenticatedConcessionariaRoute
@@ -166,6 +175,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/abcr'
     | '/admin'
     | '/app'
     | '/concessionaria'
@@ -183,6 +193,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/abcr'
     | '/admin'
     | '/app'
     | '/concessionaria'
@@ -201,6 +212,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/abcr'
     | '/_authenticated/admin'
     | '/_authenticated/app'
     | '/_authenticated/concessionaria'
@@ -337,10 +349,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/abcr': {
+      id: '/_authenticated/abcr'
+      path: '/abcr'
+      fullPath: '/abcr'
+      preLoaderRoute: typeof AuthenticatedAbcrRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAbcrRoute: typeof AuthenticatedAbcrRoute
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedAppRoute: typeof AuthenticatedAppRoute
   AuthenticatedConcessionariaRoute: typeof AuthenticatedConcessionariaRoute
@@ -356,6 +376,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAbcrRoute: AuthenticatedAbcrRoute,
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedAppRoute: AuthenticatedAppRoute,
   AuthenticatedConcessionariaRoute: AuthenticatedConcessionariaRoute,

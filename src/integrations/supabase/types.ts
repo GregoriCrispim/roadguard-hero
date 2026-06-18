@@ -80,6 +80,7 @@ export type Database = {
         Row: {
           audio_url: string | null
           categoria: Database["public"]["Enums"]["report_categoria"]
+          concessionaria_id: string | null
           created_at: string
           descricao: string | null
           foto_url: string | null
@@ -98,6 +99,7 @@ export type Database = {
         Insert: {
           audio_url?: string | null
           categoria: Database["public"]["Enums"]["report_categoria"]
+          concessionaria_id?: string | null
           created_at?: string
           descricao?: string | null
           foto_url?: string | null
@@ -116,6 +118,7 @@ export type Database = {
         Update: {
           audio_url?: string | null
           categoria?: Database["public"]["Enums"]["report_categoria"]
+          concessionaria_id?: string | null
           created_at?: string
           descricao?: string | null
           foto_url?: string | null
@@ -199,7 +202,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "user" | "concessionaria" | "admin"
+      app_role: "user" | "concessionaria" | "admin" | "abcr"
       report_categoria:
         | "animal_na_pista"
         | "veiculo_parado"
@@ -338,7 +341,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["user", "concessionaria", "admin"],
+      app_role: ["user", "concessionaria", "admin", "abcr"],
       report_categoria: [
         "animal_na_pista",
         "veiculo_parado",

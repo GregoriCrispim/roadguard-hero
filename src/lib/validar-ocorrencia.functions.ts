@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { type Gravidade, PONTOS_POR_GRAVIDADE, pontosFromGravidade } from "@/lib/pontos";
+import { assignReportConcessionaria } from "@/lib/assign-concessionaria";
 
 const Input = z.object({
   reportId: z.string().uuid(),
@@ -140,6 +141,8 @@ export const validarOcorrencia = createServerFn({ method: "POST" })
     } else {
       pontos = jaConcedidos;
     }
+
+    await assignReportConcessionaria(context.supabase, data.reportId);
 
     return { gravidade, score, pontos };
   });

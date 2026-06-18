@@ -1,9 +1,12 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useIsConcessionaria } from "@/hooks/useUserRole";
+import { useConcessionariaMembership, useConcessionariaScope, useIsConcessionaria } from "@/hooks/useUserRole";
 import { AlertsPanel } from "@/components/concessionaria/AlertsPanel";
+import { ConcessionariaConfig } from "@/components/concessionaria/ConcessionariaConfig";
 import { ConcessionariaHeatMap } from "@/components/concessionaria/ConcessionariaHeatMap";
+import { filterReportsInScope } from "@/lib/geo-scope";
 import {
   avgAiScore,
   avgResolutionMinutes,
@@ -33,7 +36,6 @@ import {
   Activity, Building2, Clock, Download, MapPin,
   ShieldAlert, TrendingUp, Users,
 } from "lucide-react";
-import { useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/concessionaria")({
   beforeLoad: async () => {
@@ -53,9 +55,12 @@ export const Route = createFileRoute("/_authenticated/concessionaria")({
 
 function ConcessionariaPage() {
   const { isConcessionaria, isLoading: loadingRole } = useIsConcessionaria();
+  const { data: membership, isLoading: loadingMember } = useConcessionariaMembership();
+  const concessionariaId = membership?.concessionaria_id;
+  const { data: scope, isLoading: loadingScope } = useConcessionariaScope(concessionariaId);
   const [mapMode, setMapMode] = useState<"heat" | "markers">("heat");
 
-  const { data: reports = [], isLoading } = useQuery({
+  const { data: allReports = [], isLoading } = useQuery({
     queryKey: ["concessionaria-reports"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -69,6 +74,16 @@ function ConcessionariaPage() {
     refetchInterval: 30_000,
   });
 
+  const reports = useMemo(() => {
+    if (!concessionariaId || !scope) return [];
+    return filterReportsInScope(
+      allReports,
+      concessionariaId,
+      scope.rotas,
+      scope.pedagios,
+    );
+  }, [allReports, concessionariaId, scope]);
+
   const { data: guardians = 0 } = useQuery({
     queryKey: ["concessionaria-guardians"],
     queryFn: async () => {
@@ -77,11 +92,25 @@ function ConcessionariaPage() {
     },
   });
 
-  if (loadingRole || isLoading) {
+  if (loadingRole || isLoading || loadingMember || loadingScope) {
     return <p className="text-sm text-muted-foreground">Carregando painel...</p>;
   }
 
   if (!isConcessionaria) return null;
+
+  if (!membership) {
+    return (
+      <div className="rounded-2xl border bg-card p-8 text-center">
+        <h2 className="font-display text-xl font-bold">Acesso pendente</h2>
+        <p className="mt-2 text-muted-foreground">
+          Sua conta tem perfil de concessionária, mas ainda não está vinculada a uma operadora.
+          Solicite à ABCR o vínculo da sua concessionária.
+        </p>
+      </div>
+    );
+  }
+
+  const conc = membership.concessionaria;
 
   const porCat = countByCategory(reports);
   const porGrav = countBySeverity(reports);
@@ -110,9 +139,9 @@ function ConcessionariaPage() {
             <Building2 className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="font-display text-3xl font-bold">Central da Concessionária</h1>
+            <h1 className="font-display text-3xl font-bold">{conc.nome}</h1>
             <p className="text-muted-foreground">
-              Gestão de alertas, mapas de calor e inteligência operacional da rodovia.
+              {conc.rodovia ?? "Rodovia"} · Alertas no seu trecho concedido ({reports.length} no escopo)
             </p>
           </div>
         </div>
@@ -148,6 +177,7 @@ function ConcessionariaPage() {
           <TabsTrigger value="mapa">Mapa de calor</TabsTrigger>
           <TabsTrigger value="estatisticas">Estatísticas</TabsTrigger>
           <TabsTrigger value="hotspots">Pontos críticos</TabsTrigger>
+          <TabsTrigger value="config">Pedágios e rota</TabsTrigger>
         </TabsList>
 
         <TabsContent value="alertas" className="space-y-4">
@@ -274,6 +304,16 @@ function ConcessionariaPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             Células com 2+ ocorrências no mesmo trecho (~1 km) — útil para planejar patrulha e sinalização.
           </p>
+        </TabsContent>
+
+        <TabsContent value="config">
+          {concessionariaId && scope && (
+            <ConcessionariaConfig
+              concessionariaId={concessionariaId}
+              rotas={scope.rotas}
+              pedagios={scope.pedagios}
+            />
+          )}
         </TabsContent>
       </Tabs>
     </div>

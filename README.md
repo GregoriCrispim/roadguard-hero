@@ -1,0 +1,120 @@
+# RoadHero
+
+Plataforma colaborativa de segurança viária — TanStack Start + Supabase + Vercel.
+
+**Produção:** https://roadguard-hero.vercel.app
+
+---
+
+## Acesso rápido
+
+| Portal | URL | Destino após login |
+|--------|-----|-------------------|
+| Guardião (motorista) | [/auth](https://roadguard-hero.vercel.app/auth) → aba **Guardião** | `/app` |
+| Concessionária | [/auth](https://roadguard-hero.vercel.app/auth) → aba **Concessionária** | `/concessionaria` |
+| ABCR (gestão nacional) | [/auth](https://roadguard-hero.vercel.app/auth) → aba **ABCR** | `/abcr` |
+
+**Senha padrão de todas as contas demo:** `Admin123`
+
+---
+
+## Contas de demonstração
+
+### Guardiões (motoristas)
+
+Use o portal **Guardião** em `/auth`.
+
+| E-mail | Nome | Cidade | Perfil |
+|--------|------|--------|--------|
+| `guardiao1@roadhero.demo` | Ana Silva | São Paulo | Bronze · 85 pts |
+| `guardiao2@roadhero.demo` | Carlos Mendes | Rio de Janeiro | Ouro · 210 pts |
+| `guardiao3@roadhero.demo` | Marina Costa | Belo Horizonte | Bronze · 45 pts |
+
+### Concessionárias (operadores regionais)
+
+Use o portal **Concessionária** em `/auth`. Cada conta vê apenas alertas da sua rodovia (rota + pedágios cadastrados).
+
+| E-mail | Concessionária | Rodovia | UF |
+|--------|----------------|---------|-----|
+| `concebra@roadhero.demo` | Concebra — BR-060 Planaltina | BR-060 | DF |
+| `autoban@roadhero.demo` | AutoBan — BR-050 Sul de Minas | BR-050 | MG |
+| `arteris@roadhero.demo` | Arteris Fluminense — BR-101 | BR-101 | RJ |
+| `viaoeste@roadhero.demo` | CCR ViaOeste — BR-116 | BR-116 | SP |
+| `ecorodovias@roadhero.demo` | EcoRodovias — BR-381 Fernão Dias | BR-381 | MG |
+| `entrevias@roadhero.demo` | Entrevias — BR-153 Goiás | BR-153 | GO |
+| `bandeiras@roadhero.demo` | Rota das Bandeiras — SP-330 | SP-330 | SP |
+| `riosp@roadhero.demo` | CCR RioSP — BR-101 Litoral Sul | BR-101 | SP |
+
+### ABCR (gestão nacional)
+
+Use o portal **ABCR** em `/auth`. Acesso a todos os alertas, concessionárias e insights do país, sem filtro viário.
+
+| E-mail | Nome | Função |
+|--------|------|--------|
+| `abcr@roadhero.demo` | Gestor Nacional ABCR | Gestão completa do ecossistema |
+| `abcr.analista@roadhero.demo` | Analista ABCR | Visão nacional e relatórios |
+
+### Admin técnico
+
+| E-mail | Nome | Acesso |
+|--------|------|--------|
+| `admin@roadhero.demo` | Administrador RoadHero | ABCR + permissões admin |
+
+---
+
+## Dados demo no banco
+
+O ambiente de produção está populado com:
+
+- **8 concessionárias** com rotas pedagiadas e pedágios
+- **~140+ alertas** distribuídos pelo país (últimos 30 dias)
+- Status variados: em análise, validado, resolvido, descartado
+- Categorias: animal na pista, acidente, clima severo, objeto na pista, etc.
+
+Para repopular localmente ou em outro ambiente:
+
+```bash
+# Requer SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente
+python3 scripts/seed-demo-accounts.py   # cria contas e vínculos
+python3 scripts/seed-demo-data.py       # popula concessionárias e alertas
+```
+
+---
+
+## Desenvolvimento local
+
+### Variáveis de ambiente
+
+```env
+SUPABASE_URL=
+SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+GOOGLE_GENERATIVE_AI_API_KEY=
+```
+
+### Scripts
+
+```bash
+npm run dev      # desenvolvimento (porta 8080)
+npm run build    # build de produção (Nitro + Vercel)
+npm run preview  # preview do build
+```
+
+---
+
+## Arquitetura de papéis
+
+| Papel | Rota principal | Escopo |
+|-------|----------------|--------|
+| `user` | `/app` | Reportar ocorrências, ver próprios pontos |
+| `concessionaria` | `/concessionaria` | Alertas da sua região + cadastro de pedágios/rota |
+| `abcr` | `/abcr` | Visão nacional, CRUD concessionárias, vínculos |
+| `admin` | `/abcr` | Mesmo que ABCR + permissões administrativas |
+
+---
+
+## Login com Google
+
+Contas Google (OAuth) também funcionam. O redirecionamento após login segue o papel atribuído em `user_roles`.

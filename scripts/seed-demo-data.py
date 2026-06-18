@@ -9,11 +9,25 @@ from datetime import datetime, timedelta, timezone
 URL = os.environ["SUPABASE_URL"]
 KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
-USERS = [
-    "834b140d-3243-4e78-a89a-f05efae1a1d3",
-    "25e9d4ea-34cc-41bf-b2f5-84c0a2cd238a",
-    "d96bf7fa-be78-4c3b-95c1-834d524a5b74",
+DEMO_GUARDIOES = [
+    "guardiao1@roadhero.demo",
+    "guardiao2@roadhero.demo",
+    "guardiao3@roadhero.demo",
 ]
+
+
+def resolve_user_ids() -> list[str]:
+    req = urllib.request.Request(
+        f"{URL}/auth/v1/admin/users?per_page=200",
+        headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        users = json.loads(resp.read().decode()).get("users", [])
+    by_email = {u["email"].lower(): u["id"] for u in users if u.get("email")}
+    ids = [by_email[e] for e in DEMO_GUARDIOES if e in by_email]
+    if not ids:
+        raise RuntimeError("Contas guardião não encontradas. Execute scripts/seed-demo-accounts.py primeiro.")
+    return ids
 
 CONCESSIONARIAS = [
     {
@@ -251,6 +265,7 @@ def main():
     print("5. Gerando alertas...")
     now = datetime.now(timezone.utc)
     reports = []
+    USERS = resolve_user_ids()
 
     all_concs = [(EXISTING_CONC["id"], EXISTING_CONC["rodovia"], EXISTING_CONC["route_points"])]
     all_concs += [(c["id"], c["rodovia"], c["route_points"]) for c in CONCESSIONARIAS]

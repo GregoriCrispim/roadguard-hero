@@ -1,37 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CHUNK_MS } from "@/lib/video-buffer-trim";
+import { getBufferStats, saveVideoChunk } from "@/lib/video-buffer-storage";
 
-const MAX_BUFFER_MS = 30 * 60 * 1000;
-const TRIM_MS = 5 * 60 * 1000;
-const CHUNK_MS = 60 * 1000;
 const TIMESLICE_MS = 1000;
-
-type VideoChunk = {
-  id: string;
-  blob: Blob;
-  startedAt: number;
-  durationMs: number;
-};
-
-function totalDuration(chunks: VideoChunk[]): number {
-  return chunks.reduce((sum, c) => sum + c.durationMs, 0);
-}
-
-function trimChunks(chunks: VideoChunk[]): VideoChunk[] {
-  let next = [...chunks];
-  let total = totalDuration(next);
-
-  while (total > MAX_BUFFER_MS && next.length > 0) {
-    const removeTarget = Math.min(TRIM_MS, total - MAX_BUFFER_MS);
-    let removed = 0;
-    while (next.length > 0 && removed < removeTarget) {
-      removed += next[0].durationMs;
-      next.shift();
-    }
-    total = totalDuration(next);
-  }
-
-  return next;
-}
 
 function getRecorderMimeType(): string | null {
   if (typeof MediaRecorder === "undefined") return null;
@@ -77,10 +48,10 @@ export function useSecurityCamera(enabled: boolean) {
   const [supported] = useState(() =>
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&
+    typeof indexedDB !== "undefined" &&
     getRecorderMimeType() != null,
   );
 
-  const chunksRef = useRef<VideoChunk[]>([]);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunkStartRef = useRef(0);
@@ -88,9 +59,18 @@ export function useSecurityCamera(enabled: boolean) {
   const recordingRef = useRef(false);
   const mimeRef = useRef<string>("video/webm");
 
-  const refreshStats = useCallback(() => {
-    setBufferMinutes(Math.round((totalDuration(chunksRef.current) / 60_000) * 10) / 10);
+  const refreshStats = useCallback(async () => {
+    try {
+      const stats = await getBufferStats();
+      setBufferMinutes(stats.minutes);
+    } catch {
+      /* noop */
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshStats();
+  }, [refreshStats]);
 
   const attachStreamToVideo = useCallback((stream: MediaStream) => {
     const el = videoRef.current;
@@ -155,19 +135,28 @@ export function useSecurityCamera(enabled: boolean) {
     };
 
     recorder.onstop = () => {
-      if (parts.length > 0) {
-        const blob = new Blob(parts, { type: mime });
-        const durationMs = Math.max(TIMESLICE_MS, Date.now() - chunkStartRef.current);
-        chunksRef.current = trimChunks([
-          ...chunksRef.current,
-          { id: crypto.randomUUID(), blob, startedAt: chunkStartRef.current, durationMs },
-        ]);
-        refreshStats();
-      }
+      void (async () => {
+        if (parts.length > 0) {
+          const blob = new Blob(parts, { type: mime });
+          const durationMs = Math.max(TIMESLICE_MS, Date.now() - chunkStartRef.current);
+          try {
+            await saveVideoChunk({
+              id: crypto.randomUUID(),
+              blob,
+              startedAt: chunkStartRef.current,
+              durationMs,
+              mimeType: mime,
+            });
+            await refreshStats();
+          } catch {
+            setError("Não foi possível salvar o vídeo no dispositivo");
+          }
+        }
 
-      if (recordingRef.current && streamRef.current) {
-        startChunk();
-      }
+        if (recordingRef.current && streamRef.current) {
+          startChunk();
+        }
+      })();
     };
 
     try {
@@ -188,7 +177,7 @@ export function useSecurityCamera(enabled: boolean) {
 
   const startCamera = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
     if (!supported) {
-      const msg = "Câmera ou gravação não suportada. Use Chrome no Android ou Safari no iPhone.";
+      const msg = "Câmera, gravação ou armazenamento local não suportados neste dispositivo.";
       setError(msg);
       return { ok: false, error: msg };
     }
@@ -252,5 +241,6 @@ export function useSecurityCamera(enabled: boolean) {
     bufferMinutes,
     toggle,
     stopCamera,
+    refreshStats,
   };
 }

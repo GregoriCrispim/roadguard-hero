@@ -7,7 +7,7 @@ import { LevelBadge } from "@/components/LevelBadge";
 import { CATEGORIAS } from "@/lib/categorias";
 import { reconciliarPontos } from "@/lib/reconciliar-pontos.functions";
 import { useIsConcessionaria, useIsAbcr } from "@/hooks/useUserRole";
-import { Map, Trophy, Gift, Sparkles, Navigation, Loader2, Building2, Globe2 } from "lucide-react";
+import { Map, Trophy, Gift, Sparkles, Navigation, Loader2, Building2, Globe2, Camera } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/painel")({
   component: PainelPage,
@@ -107,6 +107,7 @@ function PainelPage() {
           { to: "/mapa", l: "Ocorrências", i: Map },
           { to: "/ranking", l: "Ranking", i: Trophy },
           { to: "/recompensas", l: "Recompensas", i: Gift },
+          { to: "/seguranca", l: "Câmera de Segurança", i: Camera },
           { to: "/guardiao", l: "Guardião IA", i: Sparkles },
         ].map((q) => {
           const Icon = q.i;

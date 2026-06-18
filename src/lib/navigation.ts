@@ -239,10 +239,13 @@ export function bearingAlongRoute(
 
   if (distOnSeg0 >= remaining) {
     const ratio = remaining / Math.max(distOnSeg0, 1);
-    return bearingBetween(position, {
-      lat: lat + (nLat0 - lat) * ratio,
-      lng: lng + (nLng0 - lng) * ratio,
-    });
+    return bearingBetween(
+      { lat, lng },
+      {
+        lat: lat + (nLat0 - lat) * ratio,
+        lng: lng + (nLng0 - lng) * ratio,
+      },
+    );
   }
 
   remaining -= distOnSeg0;
@@ -254,10 +257,13 @@ export function bearingAlongRoute(
     const seg = haversineMeters({ lat, lng }, { lat: lat2, lng: lng2 });
     if (seg >= remaining) {
       const ratio = remaining / Math.max(seg, 1);
-      return bearingBetween(position, {
-        lat: lat + (lat2 - lat) * ratio,
-        lng: lng + (lng2 - lng) * ratio,
-      });
+      return bearingBetween(
+        { lat, lng },
+        {
+          lat: lat + (lat2 - lat) * ratio,
+          lng: lng + (lng2 - lng) * ratio,
+        },
+      );
     }
     remaining -= seg;
     lat = lat2;
@@ -265,7 +271,7 @@ export function bearingAlongRoute(
   }
 
   const last = coordinates[coordinates.length - 1];
-  return bearingBetween(position, { lat: last[0], lng: last[1] });
+  return bearingBetween({ lat, lng }, { lat: last[0], lng: last[1] });
 }
 
 export function smoothBearing(current: number, target: number, factor = 0.12): number {

@@ -51,13 +51,15 @@ function applyNavigationView(
   bearing: number,
 ) {
   map.setView([lat, lng], zoom, { animate: false });
+  const rotMap = map as RotatableMap;
+  if (typeof rotMap.setBearing === "function") {
+    // Rotate while the cursor is still at the viewport center; leaflet-rotate
+    // pivots around screen center, so panBy must happen after setBearing.
+    rotMap.setBearing(bearing);
+  }
   const offsetY = map.getSize().y * FOLLOW_OFFSET_RATIO;
   if (offsetY > 0) {
     map.panBy([0, -offsetY], { animate: false });
-  }
-  const rotMap = map as RotatableMap;
-  if (typeof rotMap.setBearing === "function") {
-    rotMap.setBearing(bearing);
   }
 }
 

@@ -39,7 +39,7 @@ function Recompensas() {
   const [qrResgate, setQrResgate] = useState<ResgateCriado | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  const { data: rewards } = useQuery({
+  const { data: rewards, isError: rewardsError, error: rewardsQueryError } = useQuery({
     queryKey: ["rewards"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -185,7 +185,13 @@ function Recompensas() {
             </div>
           </div>
         ))}
-        {(rewards ?? []).length === 0 && (
+        {rewardsError && (
+          <p className="col-span-full text-center text-destructive py-12">
+            Não foi possível carregar as recompensas. Tente atualizar a página.
+            {rewardsQueryError instanceof Error ? ` (${rewardsQueryError.message})` : ""}
+          </p>
+        )}
+        {!rewardsError && (rewards ?? []).length === 0 && (
           <p className="col-span-full text-center text-muted-foreground py-12">Nenhuma recompensa disponível no momento.</p>
         )}
       </div>

@@ -11,7 +11,7 @@ import { useSecurityCamera } from "@/hooks/useSecurityCamera";
 import { useSpeedTracker } from "@/hooks/useSpeedTracker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { CATEGORIAS, type CategoriaKey } from "@/lib/categorias";
-import { computeNavigationStats, distanceBetweenMeters, formatArrivalTime, offRouteDistanceMeters } from "@/lib/navigation";
+import { computeNavigationStats, distanceBetweenMeters, formatArrivalTime, nextNavigationCue, offRouteDistanceMeters } from "@/lib/navigation";
 import { payTolls } from "@/lib/pay-toll.functions";
 import {
   fetchDrivingRoute,
@@ -40,6 +40,7 @@ import { validarOcorrencia } from "@/lib/validar-ocorrencia.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   CreditCard,
   Loader2,
   LogOut,
@@ -115,6 +116,7 @@ export function DriveMode() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [tripReports, setTripReports] = useState<TripReportMarker[]>([]);
   const [navClock, setNavClock] = useState(0);
+  const [wazeSearchOpen, setWazeSearchOpen] = useState(false);
 
   const phaseRef = useRef(phase);
   const coordsRef = useRef(geo.coords);
@@ -167,6 +169,13 @@ export function DriveMode() {
 
     return null;
   }, [phase, navigationActive, route, geo.coords, destination, navClock, speedKmh]);
+
+  const wazeMode = phase === "driving" && navigationActive;
+
+  const navCue = useMemo(() => {
+    if (!wazeMode || !geo.coords || !route?.coordinates.length) return null;
+    return nextNavigationCue(geo.coords, route.coordinates);
+  }, [wazeMode, geo.coords, route?.coordinates, navClock]);
 
   const { data: vehicles } = useQuery({
     queryKey: ["vehicles"],
@@ -667,6 +676,7 @@ export function DriveMode() {
     setTripReports([]);
     setNavigationActive(false);
     setTollDialogOpen(false);
+    setWazeSearchOpen(false);
     setLastVoice("");
     setPhase("route");
     lastRecalcPosRef.current = null;
@@ -707,11 +717,11 @@ export function DriveMode() {
     toast.success("Localização ativada");
   }
 
-  const showSearch = phase === "route" || phase === "preview" || phase === "driving" || searchFocused;
+  const showSearch = !wazeMode && (phase === "route" || phase === "preview" || phase === "driving" || searchFocused);
   const micStatus = voice.supported ? voice.status : "unsupported";
   const micLabel = MIC_LABELS[micStatus as keyof typeof MIC_LABELS] ?? MIC_LABELS.idle;
-  const showNavPanel = (phase === "preview" || (phase === "driving" && navigationActive)) && route;
-  const bottomInset = showNavPanel ? (phase === "preview" ? 168 : 128) : 0;
+  const showNavPanel = !wazeMode && (phase === "preview" || (phase === "driving" && navigationActive)) && route;
+  const bottomInset = wazeMode ? 100 : showNavPanel ? (phase === "preview" ? 168 : 128) : 0;
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-background">
@@ -730,9 +740,203 @@ export function DriveMode() {
         reports={tripReports}
         tolls={tolls}
         bottomInset={bottomInset}
+        speedKmh={speedKmh}
       />
 
-      <div className="pointer-events-none absolute inset-0 flex flex-col">
+      {wazeMode && (
+        <>
+          <div className="pointer-events-auto absolute inset-x-0 top-0 z-40 bg-black text-white shadow-lg">
+            <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+              <div className="min-w-0 flex-1">
+                <p className="font-display text-4xl font-bold tabular-nums leading-none">
+                  {navCue ? formatDistance(navCue.distanceMeters) : "—"}
+                </p>
+                <p className="mt-1 truncate text-sm font-medium text-[#33D1FF]">
+                  {navCue?.instruction ?? "Siga a rota"}
+                </p>
+                {destination && (
+                  <p className="mt-0.5 truncate text-xs text-white/60">
+                    {destination.label.split(",").slice(0, 2).join(",")}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void exitNavigation()}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10"
+                title="Sair da navegação"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {routing && (
+              <p className="flex items-center gap-1.5 px-4 pb-2 text-xs text-[#33D1FF]">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Recalculando rota...
+              </p>
+            )}
+          </div>
+
+          <div
+            className="pointer-events-auto absolute left-4 z-30 flex flex-col items-center gap-2"
+            style={{ bottom: "calc(6.5rem + env(safe-area-inset-bottom))" }}
+          >
+            <div className="flex h-[4.5rem] w-[4.5rem] flex-col items-center justify-center rounded-full border-2 border-white/20 bg-black/75 text-white shadow-2xl backdrop-blur">
+              <span className="font-display text-2xl font-bold tabular-nums leading-none">
+                {speedKmh != null ? Math.round(speedKmh) : "—"}
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-white/70">km/h</span>
+            </div>
+            <button
+              type="button"
+              disabled={!camera.supported || camera.requesting}
+              onClick={async () => {
+                const res = await camera.toggle();
+                if (res.error) toast.error(res.error);
+                else if (res.started) toast.success("Câmera de segurança ativada");
+              }}
+              className={`flex h-11 w-11 items-center justify-center rounded-full shadow-xl ${
+                camera.active ? "bg-red-600 text-white animate-pulse" : "bg-black/70 text-white ring-1 ring-white/20"
+              }`}
+              title="Câmera de segurança"
+            >
+              {camera.requesting ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Video className="h-5 w-5" />
+              )}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            disabled={submitting || !voice.supported}
+            onClick={() => {
+              if (voice.capturing) voice.stop();
+              else startVoiceReport();
+            }}
+            className={`pointer-events-auto absolute right-4 z-30 flex h-[3.75rem] w-[3.75rem] items-center justify-center rounded-full shadow-2xl transition ${
+              voice.capturing
+                ? "bg-red-600 text-white animate-pulse"
+                : "bg-black text-amber-400 ring-2 ring-amber-400/60"
+            }`}
+            style={{ bottom: "calc(6.5rem + env(safe-area-inset-bottom))" }}
+            title={micLabel}
+          >
+            {submitting ? (
+              <Loader2 className="h-7 w-7 animate-spin text-white" />
+            ) : voice.capturing ? (
+              <Mic className="h-7 w-7 text-white" />
+            ) : (
+              <AlertTriangle className="h-7 w-7" />
+            )}
+          </button>
+
+          {voice.capturing && voice.reportTranscript && (
+            <div
+              className="pointer-events-none absolute inset-x-4 z-30 rounded-xl border border-red-500/40 bg-black/85 px-3 py-2 text-white shadow-lg backdrop-blur"
+              style={{ bottom: "calc(11rem + env(safe-area-inset-bottom))" }}
+            >
+              <p className="text-xs text-red-300">Gravando reporte...</p>
+              <p className="text-sm">&quot;{voice.reportTranscript}&quot;</p>
+            </div>
+          )}
+
+          <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-40 rounded-t-2xl bg-[#1a1a1a] text-white shadow-[0_-8px_32px_rgba(0,0,0,.45)]">
+            <div className="flex items-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+              <button
+                type="button"
+                onClick={() => setWazeSearchOpen(true)}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full hover:bg-white/10"
+                title="Buscar destino"
+              >
+                <Search className="h-6 w-6" />
+              </button>
+
+              <div className="min-w-0 flex-1 text-center">
+                {displayStats ? (
+                  <>
+                    <p className="font-display text-3xl font-bold tabular-nums leading-none">
+                      {displayStats.arrivalTime}
+                    </p>
+                    <p className="mt-1 text-xs text-white/65">
+                      {formatDuration(displayStats.remainingSeconds)} · {formatDistance(displayStats.remainingMeters)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-white/60">Aguardando GPS...</p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setTollDialogOpen(true)}
+                className={`flex h-12 min-w-12 shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold ${
+                  tollTotalCents > 0
+                    ? tollPaid
+                      ? "bg-emerald-600"
+                      : "bg-amber-500 text-black"
+                    : "hover:bg-white/10"
+                }`}
+                title="Pedágios"
+              >
+                {tollTotalCents > 0 ? "$" : <Menu className="h-6 w-6" />}
+              </button>
+            </div>
+          </div>
+
+          {wazeSearchOpen && (
+            <div className="pointer-events-auto absolute inset-0 z-50 flex flex-col bg-background/98 backdrop-blur-xl">
+              <div className="flex items-center gap-2 border-b px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWazeSearchOpen(false);
+                    setDestinationQuery("");
+                    setSuggestions([]);
+                  }}
+                  className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-surface"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    autoFocus
+                    value={destinationQuery}
+                    onChange={(e) => setDestinationQuery(e.target.value)}
+                    placeholder="Alterar destino..."
+                    className="h-11 rounded-full pl-10 pr-10"
+                  />
+                  {(searching || routing) && (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin" />
+                  )}
+                </div>
+              </div>
+              {suggestions.length > 0 && destinationQuery.trim().length >= 2 && (
+                <ul className="flex-1 overflow-y-auto">
+                  {suggestions.map((s) => (
+                    <li key={`${s.lat}-${s.lng}`}>
+                      <button
+                        type="button"
+                        className="w-full border-b px-4 py-4 text-left text-sm hover:bg-surface"
+                        onClick={() => {
+                          void buildRoute(s);
+                          setWazeSearchOpen(false);
+                        }}
+                      >
+                        {s.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      <div className={`pointer-events-none absolute inset-0 flex flex-col ${wazeMode ? "hidden" : ""}`}>
         <header className="pointer-events-auto space-y-2 bg-gradient-to-b from-background/95 via-background/80 to-transparent px-3 pb-3 pt-3">
           <div className="flex items-center gap-2">
             <button
@@ -973,7 +1177,7 @@ export function DriveMode() {
         <div
           className="pointer-events-auto absolute inset-x-3 z-50 rounded-2xl border bg-card p-4 shadow-2xl"
           style={{
-            bottom: `calc(${phase === "preview" ? "11rem" : "8.5rem"} + env(safe-area-inset-bottom))`,
+            bottom: `calc(${wazeMode ? "6.5rem" : phase === "preview" ? "11rem" : "8.5rem"} + env(safe-area-inset-bottom))`,
           }}
         >
           <div className="flex items-start justify-between gap-2">
@@ -1043,71 +1247,18 @@ export function DriveMode() {
         </div>
       )}
 
-      {phase === "driving" && navigationActive && (
-        <>
-          <button
-            type="button"
-            disabled={!camera.supported || camera.requesting}
-            onClick={async () => {
-              const res = await camera.toggle();
-              if (res.error) toast.error(res.error);
-              else if (res.started) toast.success("Câmera de segurança ativada");
-              else if (!camera.active) toast.message("Câmera desativada");
-            }}
-            className={`pointer-events-auto absolute left-4 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition ${
-              camera.active
-                ? "bg-red-600 text-white animate-pulse"
-                : camera.requesting
-                  ? "bg-muted"
-                  : !camera.supported
-                    ? "bg-muted opacity-50"
-                    : "bg-card text-foreground ring-1 ring-border"
-            }`}
-            style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}
-            title={
-              !camera.supported
-                ? "Câmera não suportada neste navegador"
-                : camera.active
-                  ? `Gravando · ${camera.bufferMinutes} min no buffer`
-                  : "Câmera de segurança (traseira)"
-            }
-          >
-            {camera.requesting ? (
-              <Loader2 className="h-6 w-6 animate-spin" />
-            ) : (
-              <Video className="h-6 w-6" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            disabled={submitting || !voice.supported}
-            onClick={() => {
-              if (voice.capturing) voice.stop();
-              else startVoiceReport();
-            }}
-            className={`pointer-events-auto absolute right-4 flex h-16 w-16 flex-col items-center justify-center rounded-full shadow-2xl transition ${
-              voice.capturing
-                ? "bg-destructive text-destructive-foreground animate-pulse"
-                : voice.status === "denied"
-                  ? "bg-muted text-muted-foreground"
-                  : "bg-primary text-primary-foreground"
-            }`}
-            style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}
-            title={micLabel}
-          >
-            {submitting ? (
-              <Loader2 className="h-7 w-7 animate-spin" />
-            ) : voice.capturing ? (
-              <Mic className="h-7 w-7" />
-            ) : (
-              <MicOff className="h-7 w-7" />
-            )}
-          </button>
-        </>
+      {wazeMode && !geo.tracking && (
+        <div
+          className="pointer-events-auto absolute inset-x-3 z-50"
+          style={{ bottom: "calc(6.5rem + env(safe-area-inset-bottom))" }}
+        >
+          <Button className="w-full gap-2 bg-black/90 text-white hover:bg-black" onClick={activateLocation}>
+            <Navigation className="h-4 w-4" /> Reativar GPS
+          </Button>
+        </div>
       )}
 
-      {phase === "driving" && navigationActive && !geo.tracking && (
+      {!wazeMode && phase === "driving" && navigationActive && !geo.tracking && (
         <div
           className="pointer-events-auto absolute inset-x-3 z-40"
           style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}

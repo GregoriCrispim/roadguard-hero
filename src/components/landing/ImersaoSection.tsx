@@ -1,16 +1,9 @@
 import { useState } from "react";
-import { Flame, Lock, Play, Sparkles, X } from "lucide-react";
+import { Flame, Lock, Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ImersaoPlayer } from "@/components/landing/ImersaoPlayer";
 import { IMERSAO_JORNADAS, type ImersaoJornada } from "@/lib/imersao-jornadas";
-
-type Fase = "avatars" | "briefing" | "video";
 
 const EM_BREVE: Pick<ImersaoJornada, "avatarNome" | "jornadaTitulo" | "descricao" | "cor">[] = [
   {
@@ -28,28 +21,17 @@ const EM_BREVE: Pick<ImersaoJornada, "avatarNome" | "jornadaTitulo" | "descricao
 ];
 
 export function ImersaoSection() {
-  const [fase, setFase] = useState<Fase>("avatars");
   const [jornadaAtiva, setJornadaAtiva] = useState<ImersaoJornada | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [sessionKey, setSessionKey] = useState(0);
 
-  function abrirJornada(jornada: ImersaoJornada) {
-    setJornadaAtiva(jornada);
-    setFase("briefing");
-    setDialogOpen(true);
+  function abrirJornada(j: ImersaoJornada) {
+    setJornadaAtiva(j);
+    setSessionKey((k) => k + 1);
   }
 
   function fechar() {
-    setDialogOpen(false);
-    setFase("avatars");
     setJornadaAtiva(null);
   }
-
-  function iniciarVideo() {
-    setFase("video");
-  }
-
-  const video = jornadaAtiva?.videos[0];
-  const BriefingIcon = jornadaAtiva?.icone;
 
   return (
     <section id="imersao" className="border-y border-border/60 bg-surface/40">
@@ -94,73 +76,10 @@ export function ImersaoSection() {
         </div>
       </div>
 
-      <Dialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          if (!open) fechar();
-        }}
-      >
+      <Dialog open={!!jornadaAtiva} onOpenChange={(open) => !open && fechar()}>
         <DialogContent className="max-w-3xl gap-0 overflow-hidden p-0 sm:rounded-2xl">
-          {jornadaAtiva && fase === "briefing" && (
-            <div className="p-6 sm:p-8">
-              <DialogHeader className="text-left">
-                <div className="mb-4 flex items-center gap-3">
-                  <div
-                    className="grid h-14 w-14 place-items-center rounded-2xl"
-                    style={{ backgroundColor: `color-mix(in oklab, ${jornadaAtiva.cor} 18%, transparent)` }}
-                  >
-                    {BriefingIcon && <BriefingIcon className="h-7 w-7" style={{ color: jornadaAtiva.cor }} />}
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {jornadaAtiva.jornadaTitulo}
-                    </p>
-                    <DialogTitle className="font-display text-2xl">
-                      Você é um {jornadaAtiva.avatarNome}
-                    </DialogTitle>
-                  </div>
-                </div>
-                <DialogDescription className="text-base leading-relaxed text-foreground/90">
-                  {jornadaAtiva.briefing}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Button size="lg" className="gap-2" onClick={iniciarVideo}>
-                  <Play className="h-4 w-4" /> Iniciar jornada
-                </Button>
-                <Button size="lg" variant="outline" onClick={fechar}>
-                  Voltar
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {jornadaAtiva && fase === "video" && video && (
-            <div className="relative bg-black">
-              <button
-                type="button"
-                onClick={fechar}
-                className="absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80"
-                aria-label="Fechar"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <div className="border-b border-white/10 px-4 py-3 text-white">
-                <p className="text-xs uppercase tracking-wider text-white/60">{jornadaAtiva.jornadaTitulo}</p>
-                <p className="font-display font-semibold">{video.titulo ?? "Cena 1"}</p>
-              </div>
-              <video
-                key={video.src}
-                className="aspect-video w-full bg-black"
-                src={video.src}
-                controls
-                autoPlay
-                playsInline
-                preload="auto"
-              >
-                Seu navegador não suporta reprodução de vídeo.
-              </video>
-            </div>
+          {jornadaAtiva && (
+            <ImersaoPlayer key={`${jornadaAtiva.id}-${sessionKey}`} jornada={jornadaAtiva} onClose={fechar} />
           )}
         </DialogContent>
       </Dialog>

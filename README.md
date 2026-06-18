@@ -26,9 +26,11 @@ Use o portal **Guardião** em `/auth`.
 
 | E-mail | Nome | Cidade | Perfil |
 |--------|------|--------|--------|
-| `guardiao1@roadhero.demo` | Ana Silva | São Paulo | Bronze · 85 pts |
-| `guardiao2@roadhero.demo` | Carlos Mendes | Rio de Janeiro | Ouro · 210 pts |
-| `guardiao3@roadhero.demo` | Marina Costa | Belo Horizonte | Bronze · 45 pts |
+| `guardiao1@roadhero.demo` | Ana Silva | São Paulo | Prata · 1.080 pts |
+| `guardiao2@roadhero.demo` | Carlos Mendes | Rio de Janeiro | Prata · 1.740 pts |
+| `guardiao3@roadhero.demo` | Marina Costa | Belo Horizonte | Prata · 1.210 pts |
+
+> Pontuação calculada automaticamente a partir dos reportes **validados** (baixa 30 · média 60 · alta 120 · crítica 200 pts).
 
 ### Concessionárias (operadores regionais)
 
@@ -77,6 +79,7 @@ Para repopular localmente ou em outro ambiente:
 # Requer SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente
 python3 scripts/seed-demo-accounts.py   # cria contas e vínculos
 python3 scripts/seed-demo-data.py       # popula concessionárias e alertas
+python3 scripts/recalcular-pontos.py    # sincroniza pontos dos perfis com reportes validados
 ```
 
 ---

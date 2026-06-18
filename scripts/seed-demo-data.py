@@ -17,17 +17,21 @@ DEMO_GUARDIOES = [
 
 
 def resolve_user_ids() -> list[str]:
+    by_email = auth_get_users()
+    ids = [by_email[e] for e in DEMO_GUARDIOES if e in by_email]
+    if not ids:
+        raise RuntimeError("Contas guardião não encontradas. Execute scripts/seed-demo-accounts.py primeiro.")
+    return ids
+
+
+def auth_get_users() -> dict[str, str]:
     req = urllib.request.Request(
         f"{URL}/auth/v1/admin/users?per_page=200",
         headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"},
     )
     with urllib.request.urlopen(req) as resp:
         users = json.loads(resp.read().decode()).get("users", [])
-    by_email = {u["email"].lower(): u["id"] for u in users if u.get("email")}
-    ids = [by_email[e] for e in DEMO_GUARDIOES if e in by_email]
-    if not ids:
-        raise RuntimeError("Contas guardião não encontradas. Execute scripts/seed-demo-accounts.py primeiro.")
-    return ids
+    return {u["email"].lower(): u["id"] for u in users if u.get("email")}
 
 CONCESSIONARIAS = [
     {
@@ -166,7 +170,7 @@ STATUSES = ["em_analise", "validado", "resolvido", "descartado"]
 STATUS_WEIGHTS = [0.25, 0.35, 0.30, 0.10]
 GRAVIDADES = ["baixa", "media", "alta", "critica"]
 GRAV_WEIGHTS = [0.30, 0.35, 0.25, 0.10]
-PONTOS = {"baixa": 10, "media": 25, "alta": 50, "critica": 100}
+PONTOS = {"baixa": 30, "media": 60, "alta": 120, "critica": 200}
 
 
 def api(method: str, path: str, body=None, prefer: str | None = None):
@@ -257,10 +261,14 @@ def main():
     else:
         print(f"Concessionárias já existem ({existing_conc}), pulando cadastro base.")
 
-    print("4. Atualizando perfis...")
-    patch("profiles", "id=eq.834b140d-3243-4e78-a89a-f05efae1a1d3", {"cidade": "Brasília", "pontos": 120, "nivel": "Prata"})
-    patch("profiles", "id=eq.25e9d4ea-34cc-41bf-b2f5-84c0a2cd238a", {"nome": "Ana Silva", "cidade": "São Paulo", "pontos": 85, "nivel": "Bronze"})
-    patch("profiles", "id=eq.d96bf7fa-be78-4c3b-95c1-834d524a5b74", {"nome": "Carlos Mendes", "cidade": "Rio de Janeiro", "pontos": 210, "nivel": "Ouro"})
+    print("4. Atualizando perfis demo...")
+    for email in DEMO_GUARDIOES:
+        users = auth_get_users()
+        uid = users.get(email)
+        if uid:
+            nome = {"guardiao1@roadhero.demo": "Ana Silva", "guardiao2@roadhero.demo": "Carlos Mendes", "guardiao3@roadhero.demo": "Marina Costa"}[email]
+            cidade = {"guardiao1@roadhero.demo": "São Paulo", "guardiao2@roadhero.demo": "Rio de Janeiro", "guardiao3@roadhero.demo": "Belo Horizonte"}[email]
+            patch("profiles", f"id=eq.{uid}", {"nome": nome, "cidade": cidade})
 
     print("5. Gerando alertas...")
     now = datetime.now(timezone.utc)

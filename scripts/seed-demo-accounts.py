@@ -22,9 +22,9 @@ CONCESSIONARIA_IDS = {
 
 ACCOUNTS = [
     # Guardiões
-    {"email": "guardiao1@roadhero.demo", "nome": "Ana Silva", "cidade": "São Paulo", "roles": ["user"], "pontos": 85, "nivel": "Bronze"},
-    {"email": "guardiao2@roadhero.demo", "nome": "Carlos Mendes", "cidade": "Rio de Janeiro", "roles": ["user"], "pontos": 210, "nivel": "Ouro"},
-    {"email": "guardiao3@roadhero.demo", "nome": "Marina Costa", "cidade": "Belo Horizonte", "roles": ["user"], "pontos": 45, "nivel": "Bronze"},
+    {"email": "guardiao1@roadhero.demo", "nome": "Ana Silva", "cidade": "São Paulo", "roles": ["user"]},
+    {"email": "guardiao2@roadhero.demo", "nome": "Carlos Mendes", "cidade": "Rio de Janeiro", "roles": ["user"]},
+    {"email": "guardiao3@roadhero.demo", "nome": "Marina Costa", "cidade": "Belo Horizonte", "roles": ["user"]},
     # Concessionárias
     {"email": "concebra@roadhero.demo", "nome": "Operador Concebra", "cidade": "Brasília", "roles": ["concessionaria"], "conc": "concebra", "cargo": "gestor"},
     {"email": "autoban@roadhero.demo", "nome": "Operador AutoBan", "cidade": "Pouso Alegre", "roles": ["concessionaria"], "conc": "autoban", "cargo": "gestor"},

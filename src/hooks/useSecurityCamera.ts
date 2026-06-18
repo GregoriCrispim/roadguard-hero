@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const MAX_BUFFER_MS = 30 * 60 * 1000;
 const TRIM_MS = 5 * 60 * 1000;
 const CHUNK_MS = 60 * 1000;
+const TIMESLICE_MS = 1000;
 
 type VideoChunk = {
   id: string;
@@ -23,8 +24,7 @@ function trimChunks(chunks: VideoChunk[]): VideoChunk[] {
     const removeTarget = Math.min(TRIM_MS, total - MAX_BUFFER_MS);
     let removed = 0;
     while (next.length > 0 && removed < removeTarget) {
-      const first = next[0];
-      removed += first.durationMs;
+      removed += next[0].durationMs;
       next.shift();
     }
     total = totalDuration(next);
@@ -33,39 +33,115 @@ function trimChunks(chunks: VideoChunk[]): VideoChunk[] {
   return next;
 }
 
+function getRecorderMimeType(): string | null {
+  if (typeof MediaRecorder === "undefined") return null;
+  const candidates = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+    "video/mp4",
+    "video/mp4;codecs=avc1",
+  ];
+  return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? null;
+}
+
+async function openCameraStream(): Promise<MediaStream> {
+  const videoConstraints: MediaTrackConstraints[] = [
+    { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    { width: { ideal: 1280 }, height: { ideal: 720 } },
+  ];
+
+  let lastError: unknown;
+  for (const video of videoConstraints) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video, audio: true });
+    } catch (e) {
+      lastError = e;
+      try {
+        return await navigator.mediaDevices.getUserMedia({ video, audio: false });
+      } catch (e2) {
+        lastError = e2;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Não foi possível acessar a câmera");
+}
+
 export function useSecurityCamera(enabled: boolean) {
   const [active, setActive] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bufferMinutes, setBufferMinutes] = useState(0);
+  const [supported] = useState(() =>
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    getRecorderMimeType() != null,
+  );
+
   const chunksRef = useRef<VideoChunk[]>([]);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunkStartRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const recordingRef = useRef(false);
+  const mimeRef = useRef<string>("video/webm");
 
   const refreshStats = useCallback(() => {
-    const mins = totalDuration(chunksRef.current) / 60_000;
-    setBufferMinutes(Math.round(mins * 10) / 10);
+    setBufferMinutes(Math.round((totalDuration(chunksRef.current) / 60_000) * 10) / 10);
   }, []);
 
+  const attachStreamToVideo = useCallback((stream: MediaStream) => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.srcObject = stream;
+    el.muted = true;
+    void el.play().catch(() => undefined);
+  }, []);
+
+  const setVideoRef = useCallback(
+    (node: HTMLVideoElement | null) => {
+      videoRef.current = node;
+      if (node && streamRef.current) attachStreamToVideo(streamRef.current);
+    },
+    [attachStreamToVideo],
+  );
+
   const stopCamera = useCallback(() => {
-    recorderRef.current?.stop();
+    recordingRef.current = false;
+
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      try {
+        recorderRef.current.stop();
+      } catch {
+        /* noop */
+      }
+    }
     recorderRef.current = null;
+
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+
     if (videoRef.current) videoRef.current.srcObject = null;
     setActive(false);
+    setRequesting(false);
   }, []);
 
   const startChunk = useCallback(() => {
     const stream = streamRef.current;
-    if (!stream) return;
+    if (!stream || !recordingRef.current) return;
 
-    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-      ? "video/webm;codecs=vp8,opus"
-      : "video/webm";
+    const mime = mimeRef.current;
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: mime });
+    } catch {
+      setError("Gravação não suportada neste navegador");
+      stopCamera();
+      return;
+    }
 
-    const recorder = new MediaRecorder(stream, { mimeType: mime });
     const parts: Blob[] = [];
     chunkStartRef.current = Date.now();
 
@@ -73,80 +149,108 @@ export function useSecurityCamera(enabled: boolean) {
       if (e.data.size > 0) parts.push(e.data);
     };
 
-    recorder.onstop = () => {
-      if (parts.length === 0) return;
-      const blob = new Blob(parts, { type: mime });
-      const durationMs = Math.max(CHUNK_MS, Date.now() - chunkStartRef.current);
-      chunksRef.current = trimChunks([
-        ...chunksRef.current,
-        { id: crypto.randomUUID(), blob, startedAt: chunkStartRef.current, durationMs },
-      ]);
-      refreshStats();
-      if (streamRef.current && enabled) startChunk();
+    recorder.onerror = () => {
+      setError("Erro durante a gravação");
+      stopCamera();
     };
 
-    recorder.start();
-    recorderRef.current = recorder;
+    recorder.onstop = () => {
+      if (parts.length > 0) {
+        const blob = new Blob(parts, { type: mime });
+        const durationMs = Math.max(TIMESLICE_MS, Date.now() - chunkStartRef.current);
+        chunksRef.current = trimChunks([
+          ...chunksRef.current,
+          { id: crypto.randomUUID(), blob, startedAt: chunkStartRef.current, durationMs },
+        ]);
+        refreshStats();
+      }
+
+      if (recordingRef.current && streamRef.current) {
+        startChunk();
+      }
+    };
+
+    try {
+      recorder.start(TIMESLICE_MS);
+      recorderRef.current = recorder;
+    } catch {
+      setError("Não foi possível iniciar a gravação");
+      stopCamera();
+      return;
+    }
+
     window.setTimeout(() => {
       if (recorderRef.current === recorder && recorder.state === "recording") {
         recorder.stop();
       }
     }, CHUNK_MS);
-  }, [enabled, refreshStats]);
+  }, [refreshStats, stopCamera]);
 
-  const startCamera = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError("Câmera indisponível neste dispositivo");
-      return false;
+  const startCamera = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!supported) {
+      const msg = "Câmera ou gravação não suportada. Use Chrome no Android ou Safari no iPhone.";
+      setError(msg);
+      return { ok: false, error: msg };
     }
+
+    const mime = getRecorderMimeType();
+    if (!mime) {
+      const msg = "Formato de vídeo não suportado neste navegador";
+      setError(msg);
+      return { ok: false, error: msg };
+    }
+    mimeRef.current = mime;
+
+    setRequesting(true);
+    setError(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: true,
-      });
-
+      const stream = await openCameraStream();
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => undefined);
-      }
+      attachStreamToVideo(stream);
 
+      recordingRef.current = true;
       setActive(true);
-      setError(null);
       startChunk();
-      return true;
+      return { ok: true };
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Permissão de câmera negada");
-      return false;
-    }
-  }, [startChunk]);
-
-  const toggle = useCallback(async () => {
-    if (active) {
+      const msg =
+        e instanceof DOMException && e.name === "NotAllowedError"
+          ? "Permissão de câmera negada. Permita o acesso nas configurações do navegador."
+          : e instanceof Error
+            ? e.message
+            : "Não foi possível acessar a câmera";
+      setError(msg);
       stopCamera();
-      return false;
+      return { ok: false, error: msg };
+    } finally {
+      setRequesting(false);
     }
-    return startCamera();
-  }, [active, startCamera, stopCamera]);
+  }, [supported, attachStreamToVideo, startChunk, stopCamera]);
+
+  const toggle = useCallback(async (): Promise<{ started: boolean; error?: string }> => {
+    if (active || requesting) {
+      stopCamera();
+      return { started: false };
+    }
+    const res = await startCamera();
+    return { started: res.ok, error: res.error };
+  }, [active, requesting, startCamera, stopCamera]);
 
   useEffect(() => {
-    if (!enabled && active) stopCamera();
-  }, [enabled, active, stopCamera]);
+    if (!enabled && (active || requesting)) stopCamera();
+  }, [enabled, active, requesting, stopCamera]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
   return {
-    videoRef,
+    setVideoRef,
+    supported,
     active,
+    requesting,
     error,
     bufferMinutes,
     toggle,
     stopCamera,
-    chunks: chunksRef.current,
   };
 }

@@ -671,7 +671,13 @@ export function DriveMode() {
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-background">
-      <video ref={camera.videoRef} className="hidden" playsInline muted autoPlay />
+      <video
+        ref={camera.setVideoRef}
+        className="pointer-events-none fixed h-px w-px opacity-0"
+        playsInline
+        muted
+        autoPlay
+      />
 
       <TripMap
         coords={geo.coords}
@@ -985,14 +991,36 @@ export function DriveMode() {
         <>
           <button
             type="button"
-            onClick={() => void camera.toggle()}
+            disabled={!camera.supported || camera.requesting}
+            onClick={async () => {
+              const res = await camera.toggle();
+              if (res.error) toast.error(res.error);
+              else if (res.started) toast.success("Câmera de segurança ativada");
+              else if (!camera.active) toast.message("Câmera desativada");
+            }}
             className={`pointer-events-auto absolute left-4 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition ${
-              camera.active ? "bg-red-600 text-white animate-pulse" : "bg-card text-foreground ring-1 ring-border"
+              camera.active
+                ? "bg-red-600 text-white animate-pulse"
+                : camera.requesting
+                  ? "bg-muted"
+                  : !camera.supported
+                    ? "bg-muted opacity-50"
+                    : "bg-card text-foreground ring-1 ring-border"
             }`}
             style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}
-            title={camera.active ? `Câmera gravando · ${camera.bufferMinutes} min` : "Câmera de segurança"}
+            title={
+              !camera.supported
+                ? "Câmera não suportada neste navegador"
+                : camera.active
+                  ? `Gravando · ${camera.bufferMinutes} min no buffer`
+                  : "Câmera de segurança (traseira)"
+            }
           >
-            <Video className="h-6 w-6" />
+            {camera.requesting ? (
+              <Loader2 className="h-6 w-6 animate-spin" />
+            ) : (
+              <Video className="h-6 w-6" />
+            )}
           </button>
 
           <button

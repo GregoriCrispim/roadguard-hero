@@ -10,6 +10,7 @@ import { useGeolocation } from "@/hooks/useGeolocation";
 import { useSecurityCamera } from "@/hooks/useSecurityCamera";
 import { useSpeedTracker } from "@/hooks/useSpeedTracker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useReportRateLimit } from "@/hooks/useReportRateLimit";
 import { CATEGORIAS, type CategoriaKey } from "@/lib/categorias";
 import { computeNavigationStats, distanceBetweenMeters, formatArrivalTime, nextNavigationCue, offRouteDistanceMeters } from "@/lib/navigation";
 import { payTolls } from "@/lib/pay-toll.functions";
@@ -21,7 +22,7 @@ import {
   type GeocodeResult,
   type RouteResult,
 } from "@/lib/routing";
-import { submitReport } from "@/lib/submit-report";
+import { submitReport, ReportRateLimitError } from "@/lib/submit-report";
 import { calculateTollsAlongRoute, formatBRL, type TollOnRoute } from "@/lib/tolls";
 import {
   addReportToTrip,
@@ -88,6 +89,7 @@ export function DriveMode() {
   const geo = useGeolocation();
   const speedKmh = useSpeedTracker(geo.coords);
   const voice = useSpeechRecognition();
+  const rateLimit = useReportRateLimit(geo.coords?.lat, geo.coords?.lng);
 
   const [phase, setPhase] = useState<TripPhase>(
     boot ? (boot.navigationStarted ? "driving" : "preview") : "location",
@@ -439,11 +441,12 @@ export function DriveMode() {
         const res = await validar({ data: { reportId: r.id, categoria, descricao } });
         qc.invalidateQueries({ queryKey: ["reports-all"] });
         qc.invalidateQueries({ queryKey: ["my-reports"] });
+        qc.invalidateQueries({ queryKey: ["my-reports-rate-limit"] });
         qc.invalidateQueries({ queryKey: ["me"] });
-        toast.success(`${cat.label} reportado · +${res.pontos} pts`);
+        toast.success(`Reporte enviado com sucesso! ${cat.label} · +${res.pontos} pts`);
         speak(`Reporte de ${cat.label} enviado. Mais ${res.pontos} pontos.`);
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Erro ao reportar";
+        const msg = e instanceof ReportRateLimitError || e instanceof Error ? e.message : "Erro ao reportar";
         toast.error(msg);
         speak("Não foi possível enviar o reporte");
       } finally {
@@ -467,6 +470,10 @@ export function DriveMode() {
       toast.error("Use Chrome no celular para reportes por voz");
       return false;
     }
+    if (!rateLimit.allowed) {
+      toast.error(rateLimit.message);
+      return false;
+    }
 
     reportLocationRef.current = { lat: geo.coords.lat, lng: geo.coords.lng };
     const ok = voice.startReportCapture((text) => {
@@ -477,7 +484,7 @@ export function DriveMode() {
       toast.error("Não foi possível iniciar o microfone. Toque novamente e permita o acesso.");
     }
     return ok;
-  }, [geo.coords, voice, submitVoiceReport]);
+  }, [geo.coords, voice, submitVoiceReport, rateLimit]);
 
   useEffect(() => {
     if (!autoGpsStarted.current) {
@@ -719,7 +726,9 @@ export function DriveMode() {
 
   const showSearch = !wazeMode && (phase === "route" || phase === "preview" || phase === "driving" || searchFocused);
   const micStatus = voice.supported ? voice.status : "unsupported";
-  const micLabel = MIC_LABELS[micStatus as keyof typeof MIC_LABELS] ?? MIC_LABELS.idle;
+  const micLabel = !rateLimit.allowed
+    ? rateLimit.message
+    : (MIC_LABELS[micStatus as keyof typeof MIC_LABELS] ?? MIC_LABELS.idle);
   const showNavPanel = !wazeMode && (phase === "preview" || (phase === "driving" && navigationActive)) && route;
   const bottomInset = wazeMode ? 100 : showNavPanel ? (phase === "preview" ? 168 : 128) : 0;
 
@@ -810,13 +819,15 @@ export function DriveMode() {
 
           <button
             type="button"
-            disabled={submitting || !voice.supported}
+            disabled={submitting || !voice.supported || !rateLimit.allowed}
             onClick={() => {
               if (voice.capturing) voice.stop();
               else startVoiceReport();
             }}
             className={`pointer-events-auto absolute right-4 z-30 flex h-[3.75rem] w-[3.75rem] items-center justify-center rounded-full shadow-2xl transition ${
-              voice.capturing
+              !rateLimit.allowed
+                ? "bg-gray-700 text-gray-400 ring-2 ring-gray-500/40 cursor-not-allowed"
+                : voice.capturing
                 ? "bg-red-600 text-white animate-pulse"
                 : "bg-black text-amber-400 ring-2 ring-amber-400/60"
             }`}

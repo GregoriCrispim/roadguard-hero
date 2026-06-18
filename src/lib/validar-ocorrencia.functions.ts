@@ -1,14 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { type Gravidade, PONTOS_POR_GRAVIDADE, pontosFromGravidade } from "@/lib/pontos";
 
 const Input = z.object({
   reportId: z.string().uuid(),
   categoria: z.string(),
   descricao: z.string().optional().default(""),
 });
-
-type Gravidade = "baixa" | "media" | "alta" | "critica";
 
 // Regra simulada de IA (fallback determinístico para demo)
 function simulateIa(categoria: string, descricao: string): { gravidade: Gravidade; score: number; pontos: number } {
@@ -25,28 +24,82 @@ function simulateIa(categoria: string, descricao: string): { gravidade: Gravidad
   else if (palavrasAltas.some((p) => txt.includes(p))) base = "alta";
 
   const score = +(0.7 + Math.random() * 0.28).toFixed(2);
-  const pontosMap: Record<Gravidade, number> = { baixa: 30, media: 60, alta: 120, critica: 200 };
-  return { gravidade: base, score, pontos: pontosMap[base] };
+  return { gravidade: base, score, pontos: PONTOS_POR_GRAVIDADE[base] };
+}
+
+async function awardPoints(
+  supabase: { from: (table: string) => any },
+  userId: string,
+  pontos: number,
+): Promise<void> {
+  const { data: prof, error: profErr } = await supabase
+    .from("profiles")
+    .select("pontos")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profErr) throw new Error(`Falha ao ler perfil: ${profErr.message}`);
+
+  const atual = prof?.pontos ?? 0;
+  const { error: updateErr } = await supabase
+    .from("profiles")
+    .update({ pontos: atual + pontos })
+    .eq("id", userId);
+
+  if (updateErr) throw new Error(`Falha ao conceder pontos: ${updateErr.message}`);
 }
 
 export const validarOcorrencia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => Input.parse(data))
   .handler(async ({ data, context }) => {
-    const { gravidade, score, pontos } = simulateIa(data.categoria, data.descricao);
-
-    // Atualiza o report
-    await context.supabase
+    const { data: existing, error: fetchErr } = await context.supabase
       .from("reports")
-      .update({ gravidade, score_ia: score, status: "validado" })
+      .select("id, status, gravidade, score_ia, pontos_concedidos")
       .eq("id", data.reportId)
-      .eq("user_id", context.userId);
+      .eq("user_id", context.userId)
+      .maybeSingle();
 
-    // Concede pontos via service role (bypassa RLS de update em profiles de outros)
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: prof } = await supabaseAdmin.from("profiles").select("pontos").eq("id", context.userId).maybeSingle();
-    const atual = prof?.pontos ?? 0;
-    await supabaseAdmin.from("profiles").update({ pontos: atual + pontos }).eq("id", context.userId);
+    if (fetchErr) throw new Error(`Falha ao buscar reporte: ${fetchErr.message}`);
+    if (!existing) throw new Error("Reporte não encontrado");
+
+    let gravidade: Gravidade;
+    let score: number;
+    let pontos: number;
+
+    if (existing.status === "validado" && existing.gravidade) {
+      gravidade = existing.gravidade as Gravidade;
+      score = existing.score_ia ?? 0;
+      pontos = existing.pontos_concedidos ?? pontosFromGravidade(gravidade);
+    } else {
+      const ia = simulateIa(data.categoria, data.descricao);
+      gravidade = ia.gravidade;
+      score = ia.score;
+      pontos = ia.pontos;
+
+      const { error: updateErr } = await context.supabase
+        .from("reports")
+        .update({ gravidade, score_ia: score, status: "validado" })
+        .eq("id", data.reportId)
+        .eq("user_id", context.userId);
+
+      if (updateErr) throw new Error(`Falha ao validar reporte: ${updateErr.message}`);
+    }
+
+    const jaConcedidos = existing.pontos_concedidos ?? 0;
+    if (jaConcedidos === 0) {
+      await awardPoints(context.supabase, context.userId, pontos);
+
+      const { error: markErr } = await context.supabase
+        .from("reports")
+        .update({ pontos_concedidos: pontos })
+        .eq("id", data.reportId)
+        .eq("user_id", context.userId);
+
+      if (markErr) throw new Error(`Falha ao registrar pontos do reporte: ${markErr.message}`);
+    } else {
+      pontos = jaConcedidos;
+    }
 
     return { gravidade, score, pontos };
   });

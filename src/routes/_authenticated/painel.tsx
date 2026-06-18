@@ -1,8 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { LevelBadge } from "@/components/LevelBadge";
 import { CATEGORIAS } from "@/lib/categorias";
+import { reconciliarPontos } from "@/lib/reconciliar-pontos.functions";
 import { Map, Trophy, Gift, Sparkles, Navigation, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/painel")({
@@ -10,6 +13,9 @@ export const Route = createFileRoute("/_authenticated/painel")({
 });
 
 function PainelPage() {
+  const qc = useQueryClient();
+  const reconciliar = useServerFn(reconciliarPontos);
+
   const { data: profile } = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
@@ -41,6 +47,20 @@ function PainelPage() {
     },
     refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await reconciliar();
+        if (res.pontosAdicionados > 0) {
+          await qc.invalidateQueries({ queryKey: ["me"] });
+          await qc.invalidateQueries({ queryKey: ["my-reports"] });
+        }
+      } catch {
+        /* reconciliação é best-effort */
+      }
+    })();
+  }, [reconciliar, qc]);
 
   const pontos = profile?.pontos ?? 0;
 

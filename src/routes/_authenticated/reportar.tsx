@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +10,9 @@ import { toast } from "sonner";
 import { Loader2, MapPin, Camera } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { validarOcorrencia } from "@/lib/validar-ocorrencia.functions";
+import { useReportRateLimit } from "@/hooks/useReportRateLimit";
+import { checkReportRateLimit } from "@/lib/report-rate-limit";
+import { getMyRecentReportsForRateLimit } from "@/lib/submit-report";
 
 export const Route = createFileRoute("/_authenticated/reportar")({
   component: Reportar,
@@ -16,12 +20,16 @@ export const Route = createFileRoute("/_authenticated/reportar")({
 
 function Reportar() {
   const nav = useNavigate();
+  const qc = useQueryClient();
   const validar = useServerFn(validarOcorrencia);
   const [categoria, setCategoria] = useState<CategoriaKey | null>(null);
   const [descricao, setDescricao] = useState("");
   const [foto, setFoto] = useState<File | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const rateLimit = useReportRateLimit(coords?.lat, coords?.lng);
+  const submitBlocked = !rateLimit.allowed;
 
   function getLocation() {
     if (!navigator.geolocation) return toast.error("GPS indisponível");
@@ -35,6 +43,14 @@ function Reportar() {
     e.preventDefault();
     if (!categoria) return toast.error("Selecione uma categoria");
     if (!coords) return toast.error("Capture sua localização");
+
+    const recent = await getMyRecentReportsForRateLimit();
+    const limit = checkReportRateLimit(recent, coords.lat, coords.lng);
+    if (!limit.allowed) {
+      toast.error(limit.message);
+      return;
+    }
+
     setLoading(true);
     try {
       const { data: u } = await supabase.auth.getUser();
@@ -59,10 +75,14 @@ function Reportar() {
 
       toast.loading("IA analisando ocorrência...", { id: "ia" });
       const res = await validar({ data: { reportId: r.id, categoria, descricao } });
-      toast.success(`Validado! Gravidade ${res.gravidade} · +${res.pontos} pontos`, { id: "ia" });
+      toast.success(`Reporte enviado com sucesso! +${res.pontos} pontos · gravidade ${res.gravidade}`, { id: "ia" });
+      await qc.invalidateQueries({ queryKey: ["me"] });
+      await qc.invalidateQueries({ queryKey: ["my-reports"] });
+      await qc.invalidateQueries({ queryKey: ["my-reports-rate-limit"] });
       nav({ to: "/painel" });
-    } catch (e: any) {
-      toast.error(e.message ?? "Erro ao reportar");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Erro ao reportar";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -72,6 +92,13 @@ function Reportar() {
     <div className="mx-auto max-w-2xl">
       <h1 className="font-display text-3xl font-bold">Nova ocorrência</h1>
       <p className="text-muted-foreground">Seu reporte chega em segundos ao centro de controle.</p>
+
+      {submitBlocked && (
+        <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          {rateLimit.message}
+        </p>
+      )}
+
       <form onSubmit={submit} className="mt-6 space-y-6">
         <div>
           <Label>Categoria</Label>
@@ -111,8 +138,8 @@ function Reportar() {
           </div>
         </div>
 
-        <Button type="submit" disabled={loading} size="lg" className="w-full gap-2">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar reporte"}
+        <Button type="submit" disabled={loading || submitBlocked} size="lg" className="w-full gap-2">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : submitBlocked ? "Limite de reportes atingido" : "Enviar reporte"}
         </Button>
       </form>
     </div>

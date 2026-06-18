@@ -87,9 +87,11 @@ export type Database = {
           id: string
           latitude: number
           longitude: number
+          pontos_concedidos: number
           rodovia: string | null
           score_ia: number | null
           status: Database["public"]["Enums"]["report_status"]
+          trip_id: string | null
           updated_at: string
           user_id: string
         }
@@ -103,9 +105,11 @@ export type Database = {
           id?: string
           latitude: number
           longitude: number
+          pontos_concedidos?: number
           rodovia?: string | null
           score_ia?: number | null
           status?: Database["public"]["Enums"]["report_status"]
+          trip_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -119,9 +123,11 @@ export type Database = {
           id?: string
           latitude?: number
           longitude?: number
+          pontos_concedidos?: number
           rodovia?: string | null
           score_ia?: number | null
           status?: Database["public"]["Enums"]["report_status"]
+          trip_id?: string | null
           updated_at?: string
           user_id?: string
         }

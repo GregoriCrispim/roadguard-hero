@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { LogOut, Map, Trophy, Gift, Leaf, Sparkles, Layout, PlusCircle, Menu, Navigation, Car } from "lucide-react";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useReportRateLimit } from "@/hooks/useReportRateLimit";
+import { toast } from "sonner";
 
 const NAV = [
   { to: "/app", label: "Mapa", icon: Navigation },
@@ -21,6 +23,14 @@ export function AppHeader() {
   const router = useRouter();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const rateLimit = useReportRateLimit();
+
+  function handleReportarClick(e: React.MouseEvent) {
+    if (!rateLimit.allowed) {
+      e.preventDefault();
+      toast.error(rateLimit.message);
+    }
+  }
 
   async function signOut() {
     await qc.cancelQueries();
@@ -46,8 +56,12 @@ export function AppHeader() {
           ))}
         </nav>
         <div className="flex items-center gap-2">
-          <Link to="/reportar" className="hidden sm:block">
-            <Button className="gap-2">
+          <Link
+            to="/reportar"
+            className="hidden sm:block"
+            onClick={handleReportarClick}
+          >
+            <Button className="gap-2" disabled={!rateLimit.allowed}>
               <PlusCircle className="h-4 w-4" /> Reportar
             </Button>
           </Link>
@@ -74,7 +88,18 @@ export function AppHeader() {
               </Link>
             );
           })}
-          <Link to="/reportar" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground sm:hidden">
+          <Link
+            to="/reportar"
+            onClick={(e) => {
+              setOpen(false);
+              handleReportarClick(e);
+            }}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold sm:hidden ${
+              rateLimit.allowed
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground pointer-events-none opacity-60"
+            }`}
+          >
             <PlusCircle className="h-4 w-4" /> Reportar
           </Link>
         </nav>

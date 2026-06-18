@@ -27,10 +27,17 @@ type Props = {
 };
 
 /** Posição vertical do cursor GPS na tela (fração da altura, a partir do topo). */
-export const GPS_CURSOR_SCREEN_Y = 0.66;
 const FOLLOW_OFFSET_RATIO = 0.32;
 const NAV_ZOOM = 18;
 const ROUTE_COLOR = "#33D1FF";
+
+function userNavIconHtml(size: number): string {
+  return `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 4px 12px rgba(0,0,0,.55))">
+    <svg width="${Math.round(size * 0.75)}" height="${Math.round(size * 0.75)}" viewBox="0 0 64 64">
+      <path d="M32 6 L54 54 L32 44 L10 54 Z" fill="#33D1FF" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    </svg>
+  </div>`;
+}
 
 type RotatableMap = import("leaflet").Map & {
   setBearing(bearing: number): import("leaflet").Map;
@@ -44,16 +51,13 @@ function centerOnUserWithOffset(
   zoom: number,
   bearing = 0,
 ) {
-  const size = map.getSize();
-  const offsetY = size.y * FOLLOW_OFFSET_RATIO;
-  const point = map.project([lat, lng], zoom);
-  point.y -= offsetY;
-  const center = map.unproject(point, zoom);
   const rotMap = map as RotatableMap;
   if (typeof rotMap.setBearing === "function") {
     rotMap.setBearing(bearing);
   }
-  map.setView(center, zoom, { animate: false });
+  map.setView([lat, lng], zoom, { animate: false });
+  const offsetY = map.getSize().y * FOLLOW_OFFSET_RATIO;
+  map.panBy([0, -offsetY], { animate: false });
 }
 
 export function TripMap({
@@ -223,24 +227,23 @@ export function TripMap({
   }, [navigating]);
 
   useEffect(() => {
-    if (!mapRef.current || !coords || navigating) {
-      userMarkerRef.current?.remove();
-      userMarkerRef.current = null;
-      return;
-    }
+    if (!mapRef.current || !coords) return;
 
     (async () => {
       const L = (await import("leaflet")).default;
       const map = mapRef.current!;
+      const size = navigating ? 64 : 52;
       const icon = L.divIcon({
         className: "",
-        html: `<div style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 3px 8px rgba(0,0,0,.5))">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="#2563EB" stroke="#fff" stroke-width="1.5">
-            <path d="M12 2 L20 20 L12 16 L4 20 Z"/>
-          </svg>
-        </div>`,
-        iconSize: [52, 52],
-        iconAnchor: [26, 26],
+        html: navigating
+          ? userNavIconHtml(size)
+          : `<div style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 3px 8px rgba(0,0,0,.5))">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="#2563EB" stroke="#fff" stroke-width="1.5">
+                <path d="M12 2 L20 20 L12 16 L4 20 Z"/>
+              </svg>
+            </div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
       });
 
       if (!userMarkerRef.current) {
@@ -366,29 +369,6 @@ export function TripMap({
   return (
     <>
       <div ref={ref} className="absolute inset-0 z-0" />
-
-      {navigating && (
-        <div
-          className="pointer-events-none absolute left-1/2 z-[15] -translate-x-1/2 -translate-y-1/2"
-          style={{ top: `${GPS_CURSOR_SCREEN_Y * 100}%` }}
-        >
-          <svg
-            width="64"
-            height="64"
-            viewBox="0 0 64 64"
-            className="drop-shadow-[0_4px_12px_rgba(0,0,0,0.55)]"
-            aria-hidden
-          >
-            <path
-              d="M32 6 L54 54 L32 44 L10 54 Z"
-              fill="#33D1FF"
-              stroke="#ffffff"
-              strokeWidth="3"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      )}
 
       {navigating && !following && (
         <button

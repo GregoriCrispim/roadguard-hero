@@ -12,6 +12,7 @@ Plataforma colaborativa de segurança viária — TanStack Start + Supabase + Ve
 |--------|-----|-------------------|
 | Guardião (motorista) | [/auth](https://roadguard-hero.vercel.app/auth) → aba **Guardião** | `/app` |
 | Concessionária | [/auth](https://roadguard-hero.vercel.app/auth) → aba **Concessionária** | `/concessionaria` |
+| Parceiro (recompensas) | [/auth](https://roadguard-hero.vercel.app/auth) → aba **Parceiro** | `/parceiro` |
 | ABCR (gestão nacional) | [/auth](https://roadguard-hero.vercel.app/auth) → aba **ABCR** | `/abcr` |
 
 **Senha padrão de todas as contas demo:** `Admin123`
@@ -62,6 +63,21 @@ Use o portal **ABCR** em `/auth`. Acesso a todos os alertas, concessionárias e 
 |--------|------|--------|
 | `admin@roadhero.demo` | Administrador RoadHero | ABCR + permissões admin |
 
+### Parceiros (empresas com recompensas)
+
+Use o portal **Parceiro** em `/auth`. Gestores cadastram a empresa e recompensas; funcionários validam QR Codes de resgate.
+
+| E-mail | Empresa | Papel |
+|--------|---------|-------|
+| `posto@roadhero.demo` | Posto Estrada Real | Gestor |
+| `funcionario.posto@roadhero.demo` | Posto Estrada Real | Funcionário (validar QR) |
+| `restaurante@roadhero.demo` | Restaurante Via Sul | Gestor |
+| `funcionario.restaurante@roadhero.demo` | Restaurante Via Sul | Funcionário |
+| `pedagio@roadhero.demo` | TAG Rodovia Fácil | Gestor |
+| `funcionario.pedagio@roadhero.demo` | TAG Rodovia Fácil | Funcionário |
+
+**Fluxo de resgate:** Guardião → `/recompensas` → Resgatar → QR Code → Parceiro escaneia em `/parceiro` → pontos abatidos + toast de confirmação.
+
 ---
 
 ## Dados demo no banco
@@ -69,6 +85,7 @@ Use o portal **ABCR** em `/auth`. Acesso a todos os alertas, concessionárias e 
 O ambiente de produção está populado com:
 
 - **8 concessionárias** com rotas pedagiadas e pedágios
+- **3 parceiros** com recompensas e contas gestor/funcionário
 - **~140+ alertas** distribuídos pelo país (últimos 30 dias)
 - Status variados: em análise, validado, resolvido, descartado
 - Categorias: animal na pista, acidente, clima severo, objeto na pista, etc.
@@ -79,7 +96,16 @@ Para repopular localmente ou em outro ambiente:
 # Requer SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente
 python3 scripts/seed-demo-accounts.py   # cria contas e vínculos
 python3 scripts/seed-demo-data.py       # popula concessionárias e alertas
+python3 scripts/seed-demo-partners.py   # parceiros e recompensas
 python3 scripts/recalcular-pontos.py    # sincroniza pontos dos perfis com reportes validados
+```
+
+### Migrations (Supabase CLI — recomendado)
+
+A Management API (`/database/query`) pode retornar **HTTP 403 error code: 1010** (rate limit Cloudflare) em scripts com muitas chamadas seguidas. Use o CLI com projeto linkado:
+
+```bash
+npx supabase db push --linked --yes
 ```
 
 ---
@@ -113,6 +139,7 @@ npm run preview  # preview do build
 |-------|----------------|--------|
 | `user` | `/app` | Reportar ocorrências, ver próprios pontos |
 | `concessionaria` | `/concessionaria` | Alertas da sua região + cadastro de pedágios/rota |
+| `partner` | `/parceiro` | Cadastro da empresa, recompensas e validação de QR |
 | `abcr` | `/abcr` | Visão nacional, CRUD concessionárias, vínculos |
 | `admin` | `/abcr` | Mesmo que ABCR + permissões administrativas |
 

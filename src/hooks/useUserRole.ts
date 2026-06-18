@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { ConcessionariaPedagio, ConcessionariaRota } from "@/lib/geo-scope";
 import { normalizeCoordinates } from "@/lib/geo-scope";
 
-export type AppRole = "user" | "concessionaria" | "admin" | "abcr";
+export type AppRole = "user" | "concessionaria" | "admin" | "abcr" | "partner";
 
 export type UserRoleRow = {
   role: AppRole;
@@ -113,5 +113,6 @@ export async function resolvePostLoginPath(): Promise<string> {
   const roleList = (roles ?? []).map((r) => r.role as AppRole);
   if (roleList.includes("abcr") || roleList.includes("admin")) return "/abcr";
   if (roleList.includes("concessionaria")) return "/concessionaria";
+  if (roleList.includes("partner")) return "/parceiro";
   return "/app";
 }

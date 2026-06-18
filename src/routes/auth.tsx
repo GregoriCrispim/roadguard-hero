@@ -9,15 +9,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RoadHeroLogo } from "@/components/RoadHeroLogo";
 import { authErrorMessage } from "@/lib/auth-errors";
 import { toast } from "sonner";
-import { ArrowLeft, Building2, Globe2, Loader2, Shield } from "lucide-react";
+import { ArrowLeft, Building2, Gift, Globe2, Loader2, Shield } from "lucide-react";
 
-type Portal = "guardiao" | "concessionaria" | "abcr";
+type Portal = "guardiao" | "concessionaria" | "abcr" | "parceiro";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Entrar — RoadHero" },
-      { name: "description", content: "Acesse como Guardião, Concessionária ou ABCR." },
+      { name: "description", content: "Acesse como Guardião, Concessionária, Parceiro ou ABCR." },
     ],
   }),
   component: AuthPage,
@@ -60,7 +60,11 @@ function AuthPage() {
       toast.error("Esta conta não tem perfil ABCR.");
       return;
     }
-    if (portal === "guardiao" && (path === "/concessionaria" || path === "/abcr")) {
+    if (portal === "parceiro" && path !== "/parceiro" && path !== "/abcr") {
+      toast.error("Esta conta não tem perfil de parceiro.");
+      return;
+    }
+    if (portal === "guardiao" && (path === "/concessionaria" || path === "/abcr" || path === "/parceiro")) {
       nav({ to: path as "/concessionaria", replace: true });
       return;
     }
@@ -104,14 +108,17 @@ function AuthPage() {
           <div className="mb-8 lg:hidden"><RoadHeroLogo /></div>
 
           <Tabs value={portal} onValueChange={(v) => setPortal(v as Portal)}>
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="guardiao" className="gap-1 text-xs sm:text-sm">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+              <TabsTrigger value="guardiao" className="gap-1 text-xs">
                 <Shield className="h-3.5 w-3.5" /> Guardião
               </TabsTrigger>
-              <TabsTrigger value="concessionaria" className="gap-1 text-xs sm:text-sm">
+              <TabsTrigger value="concessionaria" className="gap-1 text-xs">
                 <Building2 className="h-3.5 w-3.5" /> Concessionária
               </TabsTrigger>
-              <TabsTrigger value="abcr" className="gap-1 text-xs sm:text-sm">
+              <TabsTrigger value="parceiro" className="gap-1 text-xs">
+                <Gift className="h-3.5 w-3.5" /> Parceiro
+              </TabsTrigger>
+              <TabsTrigger value="abcr" className="gap-1 text-xs">
                 <Globe2 className="h-3.5 w-3.5" /> ABCR
               </TabsTrigger>
             </TabsList>
@@ -119,13 +126,19 @@ function AuthPage() {
             <TabsContent value="guardiao" className="mt-4">
               <PortalIntro
                 title="Portal do Guardião"
-                desc="Reporte ocorrências, ganhe pontos e torne as rodovias mais seguras."
+                desc="Reporte ocorrências, ganhe pontos e troque por recompensas de parceiros."
               />
             </TabsContent>
             <TabsContent value="concessionaria" className="mt-4">
               <PortalIntro
                 title="Portal da Concessionária"
                 desc="Gerencie alertas, pedágios e o trecho da sua via pedagiada."
+              />
+            </TabsContent>
+            <TabsContent value="parceiro" className="mt-4">
+              <PortalIntro
+                title="Portal do Parceiro"
+                desc="Cadastre sua empresa, ofereça recompensas e valide resgates por QR Code."
               />
             </TabsContent>
             <TabsContent value="abcr" className="mt-4">
@@ -148,10 +161,23 @@ function AuthPage() {
           <Tabs defaultValue="login">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Entrar</TabsTrigger>
-              <TabsTrigger value="signup" disabled={portal !== "guardiao"}>Criar conta</TabsTrigger>
+              <TabsTrigger value="signup" disabled={portal !== "guardiao" && portal !== "parceiro"}>Criar conta</TabsTrigger>
             </TabsList>
             <TabsContent value="login"><LoginForm onSuccess={afterLogin} /></TabsContent>
-            <TabsContent value="signup"><SignupForm onSuccess={afterLogin} /></TabsContent>
+            <TabsContent value="signup">
+              <SignupForm
+                isPartnerSignup={portal === "parceiro"}
+                onSuccess={async () => {
+                  if (portal === "parceiro") {
+                    toast.success("Conta criada! Complete o cadastro da empresa.");
+                    nav({ to: "/parceiro", replace: true });
+                    return;
+                  }
+                  await afterLogin();
+                }}
+                label={portal === "parceiro" ? "Criar conta de Parceiro" : "Criar conta de Guardião"}
+              />
+            </TabsContent>
           </Tabs>
         </div>
       </div>
@@ -200,7 +226,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-function SignupForm({ onSuccess }: { onSuccess: () => void }) {
+function SignupForm({ onSuccess, label = "Criar conta de Guardião", isPartnerSignup = false }: { onSuccess: () => void; label?: string; isPartnerSignup?: boolean }) {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [cidade, setCidade] = useState("");
@@ -218,6 +244,9 @@ function SignupForm({ onSuccess }: { onSuccess: () => void }) {
     setLoading(false);
     if (error) return toast.error(authErrorMessage(error));
     if (data.session) {
+      if (isPartnerSignup) {
+        await supabase.rpc("ativar_portal_parceiro");
+      }
       toast.success("Conta criada!");
       onSuccess();
       return;
@@ -234,7 +263,7 @@ function SignupForm({ onSuccess }: { onSuccess: () => void }) {
       <div><Label htmlFor="email2">E-mail</Label><Input id="email2" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
       <div><Label htmlFor="senha2">Senha</Label><Input id="senha2" type="password" minLength={6} required value={senha} onChange={(e) => setSenha(e.target.value)} /></div>
       <Button type="submit" disabled={loading} className="w-full">
-        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar conta de Guardião"}
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
       </Button>
     </form>
   );

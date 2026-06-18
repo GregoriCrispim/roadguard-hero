@@ -18,6 +18,7 @@ import { Route as AuthenticatedVeiculosRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedReportarRouteImport } from './routes/_authenticated/reportar'
 import { Route as AuthenticatedRecompensasRouteImport } from './routes/_authenticated/recompensas'
 import { Route as AuthenticatedRankingRouteImport } from './routes/_authenticated/ranking'
+import { Route as AuthenticatedParceiroRouteImport } from './routes/_authenticated/parceiro'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AuthenticatedMapaRouteImport } from './routes/_authenticated/mapa'
 import { Route as AuthenticatedImpactoRouteImport } from './routes/_authenticated/impacto'
@@ -70,6 +71,11 @@ const AuthenticatedRecompensasRoute =
 const AuthenticatedRankingRoute = AuthenticatedRankingRouteImport.update({
   id: '/ranking',
   path: '/ranking',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedParceiroRoute = AuthenticatedParceiroRouteImport.update({
+  id: '/parceiro',
+  path: '/parceiro',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/impacto': typeof AuthenticatedImpactoRoute
   '/mapa': typeof AuthenticatedMapaRoute
   '/painel': typeof AuthenticatedPainelRoute
+  '/parceiro': typeof AuthenticatedParceiroRoute
   '/ranking': typeof AuthenticatedRankingRoute
   '/recompensas': typeof AuthenticatedRecompensasRoute
   '/reportar': typeof AuthenticatedReportarRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/impacto': typeof AuthenticatedImpactoRoute
   '/mapa': typeof AuthenticatedMapaRoute
   '/painel': typeof AuthenticatedPainelRoute
+  '/parceiro': typeof AuthenticatedParceiroRoute
   '/ranking': typeof AuthenticatedRankingRoute
   '/recompensas': typeof AuthenticatedRecompensasRoute
   '/reportar': typeof AuthenticatedReportarRoute
@@ -163,6 +171,7 @@ export interface FileRoutesById {
   '/_authenticated/impacto': typeof AuthenticatedImpactoRoute
   '/_authenticated/mapa': typeof AuthenticatedMapaRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
+  '/_authenticated/parceiro': typeof AuthenticatedParceiroRoute
   '/_authenticated/ranking': typeof AuthenticatedRankingRoute
   '/_authenticated/recompensas': typeof AuthenticatedRecompensasRoute
   '/_authenticated/reportar': typeof AuthenticatedReportarRoute
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
     | '/impacto'
     | '/mapa'
     | '/painel'
+    | '/parceiro'
     | '/ranking'
     | '/recompensas'
     | '/reportar'
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
     | '/impacto'
     | '/mapa'
     | '/painel'
+    | '/parceiro'
     | '/ranking'
     | '/recompensas'
     | '/reportar'
@@ -220,6 +231,7 @@ export interface FileRouteTypes {
     | '/_authenticated/impacto'
     | '/_authenticated/mapa'
     | '/_authenticated/painel'
+    | '/_authenticated/parceiro'
     | '/_authenticated/ranking'
     | '/_authenticated/recompensas'
     | '/_authenticated/reportar'
@@ -300,6 +312,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRankingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/parceiro': {
+      id: '/_authenticated/parceiro'
+      path: '/parceiro'
+      fullPath: '/parceiro'
+      preLoaderRoute: typeof AuthenticatedParceiroRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/painel': {
       id: '/_authenticated/painel'
       path: '/painel'
@@ -368,6 +387,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedImpactoRoute: typeof AuthenticatedImpactoRoute
   AuthenticatedMapaRoute: typeof AuthenticatedMapaRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
+  AuthenticatedParceiroRoute: typeof AuthenticatedParceiroRoute
   AuthenticatedRankingRoute: typeof AuthenticatedRankingRoute
   AuthenticatedRecompensasRoute: typeof AuthenticatedRecompensasRoute
   AuthenticatedReportarRoute: typeof AuthenticatedReportarRoute
@@ -384,6 +404,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedImpactoRoute: AuthenticatedImpactoRoute,
   AuthenticatedMapaRoute: AuthenticatedMapaRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
+  AuthenticatedParceiroRoute: AuthenticatedParceiroRoute,
   AuthenticatedRankingRoute: AuthenticatedRankingRoute,
   AuthenticatedRecompensasRoute: AuthenticatedRecompensasRoute,
   AuthenticatedReportarRoute: AuthenticatedReportarRoute,

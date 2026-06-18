@@ -328,6 +328,10 @@ def main():
     print(f"   Inserindo {len(reports)} alertas...")
     insert("reports", reports)
 
+    print("6. Recalculando pontos dos guardiões...")
+    import subprocess
+    subprocess.run(["python3", "/workspace/scripts/recalcular-pontos.py"], check=True)
+
     # Resumo
     counts = {}
     for label, table in [

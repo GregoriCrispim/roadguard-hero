@@ -109,7 +109,7 @@ export function ImersaoSection() {
                     className="grid h-14 w-14 place-items-center rounded-2xl"
                     style={{ backgroundColor: `color-mix(in oklab, ${jornadaAtiva.cor} 18%, transparent)` }}
                   >
-                    <jornadaAtiva.icone className="h-7 w-7" style={{ color: jornadaAtiva.cor }} />
+                    {BriefingIcon && <BriefingIcon className="h-7 w-7" style={{ color: jornadaAtiva.cor }} />}
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

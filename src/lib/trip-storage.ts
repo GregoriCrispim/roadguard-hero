@@ -10,6 +10,7 @@ export type StoredTrip = {
   startedAt: number;
   expiresAt: number;
   reportIds: string[];
+  navigationStarted?: boolean;
 };
 
 const STORAGE_KEY = "roadhero_active_trip";

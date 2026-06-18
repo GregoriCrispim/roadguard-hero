@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type SpeechRecognitionCtor = new () => SpeechRecognition;
 
-export type MicStatus = "unsupported" | "idle" | "listening" | "error" | "denied" | "prompt";
+export type MicStatus = "unsupported" | "idle" | "listening" | "error" | "denied" | "prompt" | "capturing";
+
+const SILENCE_MS = 5000;
 
 function getSpeechRecognition(): SpeechRecognitionCtor | null {
   if (typeof window === "undefined") return null;
@@ -26,17 +28,55 @@ async function queryMicPermission(): Promise<PermissionState | "unknown"> {
 export function useSpeechRecognition(lang = "pt-BR") {
   const [status, setStatus] = useState<MicStatus>("idle");
   const [transcript, setTranscript] = useState("");
+  const [reportTranscript, setReportTranscript] = useState("");
   const [supported, setSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const onResultRef = useRef<(text: string) => void>(() => {});
+  const onReportCompleteRef = useRef<(text: string) => void>(() => {});
   const shouldListenRef = useRef(false);
+  const reportModeRef = useRef(false);
+  const finalPartsRef = useRef<string[]>([]);
+  const silenceTimerRef = useRef<number | null>(null);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current != null) {
+      window.clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
+
+  const finishReportCapture = useCallback(() => {
+    if (!reportModeRef.current) return;
+    reportModeRef.current = false;
+    shouldListenRef.current = false;
+    clearSilenceTimer();
+
+    const text = finalPartsRef.current.join(" ").trim();
+    finalPartsRef.current = [];
+    setReportTranscript("");
+
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* noop */
+    }
+
+    setStatus("idle");
+    if (text) onReportCompleteRef.current(text);
+  }, [clearSilenceTimer]);
+
+  const resetSilenceTimer = useCallback(() => {
+    if (!reportModeRef.current) return;
+    clearSilenceTimer();
+    silenceTimerRef.current = window.setTimeout(() => finishReportCapture(), SILENCE_MS);
+  }, [clearSilenceTimer, finishReportCapture]);
 
   const startRecognition = useCallback(() => {
     const recognition = recognitionRef.current;
     if (!recognition || !shouldListenRef.current) return false;
     try {
       recognition.start();
-      setStatus("listening");
+      setStatus(reportModeRef.current ? "capturing" : "listening");
       return true;
     } catch {
       return false;
@@ -58,23 +98,39 @@ export function useSpeechRecognition(lang = "pt-BR") {
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
+      let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        if (!result?.isFinal) continue;
         const text = result[0]?.transcript?.trim() ?? "";
-        if (text) {
+        if (!text) continue;
+
+        if (reportModeRef.current) {
+          if (result.isFinal) {
+            finalPartsRef.current.push(text);
+            resetSilenceTimer();
+          } else {
+            interim = text;
+          }
+        } else if (result.isFinal) {
           setTranscript(text);
           onResultRef.current(text);
         }
       }
+
+      if (reportModeRef.current) {
+        const full = [...finalPartsRef.current, interim].filter(Boolean).join(" ");
+        setReportTranscript(full);
+        if (interim) resetSilenceTimer();
+      }
     };
 
-    recognition.onstart = () => setStatus("listening");
+    recognition.onstart = () =>
+      setStatus(reportModeRef.current ? "capturing" : "listening");
 
     recognition.onend = () => {
-      if (shouldListenRef.current) {
+      if (shouldListenRef.current && !reportModeRef.current) {
         window.setTimeout(() => startRecognition(), 300);
-      } else {
+      } else if (!reportModeRef.current) {
         setStatus("idle");
       }
     };
@@ -83,10 +139,16 @@ export function useSpeechRecognition(lang = "pt-BR") {
       const err = (event as SpeechRecognitionErrorEvent).error;
       if (err === "not-allowed" || err === "service-not-allowed") {
         shouldListenRef.current = false;
+        reportModeRef.current = false;
+        clearSilenceTimer();
         setStatus("denied");
         return;
       }
-      if (err === "no-speech" || err === "aborted") return;
+      if (err === "no-speech") {
+        if (reportModeRef.current) resetSilenceTimer();
+        return;
+      }
+      if (err === "aborted") return;
       setStatus("error");
     };
 
@@ -99,6 +161,8 @@ export function useSpeechRecognition(lang = "pt-BR") {
 
     return () => {
       shouldListenRef.current = false;
+      reportModeRef.current = false;
+      clearSilenceTimer();
       try {
         recognition.stop();
       } catch {
@@ -106,16 +170,13 @@ export function useSpeechRecognition(lang = "pt-BR") {
       }
       recognitionRef.current = null;
     };
-  }, [lang, startRecognition]);
+  }, [lang, startRecognition, resetSilenceTimer, clearSilenceTimer]);
 
-  /**
-   * Deve ser chamado diretamente de um clique/toque do usuário.
-   * Inicia o reconhecimento na mesma cadeia do gesto para o navegador exibir o prompt.
-   */
   const enableFromGesture = useCallback(
     (onResult: (text: string) => void) => {
       if (!recognitionRef.current) return false;
 
+      reportModeRef.current = false;
       onResultRef.current = onResult;
       shouldListenRef.current = true;
       setStatus("prompt");
@@ -140,50 +201,63 @@ export function useSpeechRecognition(lang = "pt-BR") {
     [startRecognition],
   );
 
-  const start = useCallback(
-    async (onResult: (text: string) => void) => {
+  const startReportCapture = useCallback(
+    (onComplete: (text: string) => void) => {
       if (!recognitionRef.current) return false;
 
-      const perm = await queryMicPermission();
-      if (perm === "denied") {
-        setStatus("denied");
-        return false;
-      }
+      finalPartsRef.current = [];
+      setReportTranscript("");
+      reportModeRef.current = true;
+      onReportCompleteRef.current = onComplete;
+      shouldListenRef.current = true;
+      setStatus("prompt");
+
+      const started = startRecognition();
+      if (started) resetSilenceTimer();
 
       if (navigator.mediaDevices?.getUserMedia) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          stream.getTracks().forEach((t) => t.stop());
-        } catch {
-          setStatus("denied");
-          return false;
-        }
+        navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then((stream) => stream.getTracks().forEach((t) => t.stop()))
+          .catch(() => {
+            if (!started) setStatus("denied");
+          });
       }
 
-      onResultRef.current = onResult;
-      shouldListenRef.current = true;
-      return startRecognition();
+      if (!started) {
+        reportModeRef.current = false;
+        setStatus("error");
+        return false;
+      }
+      return true;
     },
-    [startRecognition],
+    [startRecognition, resetSilenceTimer],
   );
 
   const stop = useCallback(() => {
+    if (reportModeRef.current) {
+      finishReportCapture();
+      return;
+    }
     shouldListenRef.current = false;
+    clearSilenceTimer();
     try {
       recognitionRef.current?.stop();
     } catch {
       /* noop */
     }
     setStatus("idle");
-  }, []);
+  }, [finishReportCapture, clearSilenceTimer]);
 
   return {
     supported,
-    listening: status === "listening",
+    listening: status === "listening" || status === "capturing",
+    capturing: status === "capturing",
     status,
     transcript,
+    reportTranscript,
     enableFromGesture,
-    start,
+    startReportCapture,
     stop,
   };
 }

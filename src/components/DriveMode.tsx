@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TripMap, type TripReportMarker } from "@/components/TripMap";
 import { useGeolocation } from "@/hooks/useGeolocation";
+import { useSecurityCamera } from "@/hooks/useSecurityCamera";
+import { useSpeedTracker } from "@/hooks/useSpeedTracker";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { CATEGORIAS, type CategoriaKey } from "@/lib/categorias";
-import { computeNavigationStats, distanceBetweenMeters, offRouteDistanceMeters } from "@/lib/navigation";
+import { computeNavigationStats, distanceBetweenMeters, formatArrivalTime, offRouteDistanceMeters } from "@/lib/navigation";
 import { payTolls } from "@/lib/pay-toll.functions";
 import {
   fetchDrivingRoute,
@@ -33,7 +35,7 @@ import {
   type StoredTrip,
 } from "@/lib/trip-storage";
 import { interpretVoiceReport } from "@/lib/interpret-voice-report.functions";
-import { inferReportFromNaturalSpeech, parseVoiceCommand, VOICE_HINTS } from "@/lib/voice-commands";
+import { inferReportFromNaturalSpeech, parseVoiceCommand } from "@/lib/voice-commands";
 import { validarOcorrencia } from "@/lib/validar-ocorrencia.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -46,10 +48,11 @@ import {
   MicOff,
   Navigation,
   Search,
+  Video,
   X,
 } from "lucide-react";
 
-type TripPhase = "location" | "route" | "driving";
+type TripPhase = "location" | "route" | "preview" | "driving";
 
 function speak(text: string) {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -66,7 +69,8 @@ function getBootTrip(): StoredTrip | null {
 
 const MIC_LABELS = {
   listening: "Microfone ativo — ouvindo",
-  idle: "Toque no microfone para ativar",
+  capturing: "Gravando reporte — fale e pause 5s para enviar",
+  idle: "Toque no microfone para reportar",
   prompt: "Solicitando permissão...",
   denied: "Permissão negada — toque para tentar de novo",
   error: "Erro no microfone — toque para tentar",
@@ -80,9 +84,14 @@ export function DriveMode() {
   const interpretVoice = useServerFn(interpretVoiceReport);
   const payTollFn = useServerFn(payTolls);
   const geo = useGeolocation();
+  const speedKmh = useSpeedTracker(geo.coords);
   const voice = useSpeechRecognition();
+  const camera = useSecurityCamera(phase === "driving" && navigationActive);
 
-  const [phase, setPhase] = useState<TripPhase>(boot ? "driving" : "location");
+  const [phase, setPhase] = useState<TripPhase>(
+    boot ? (boot.navigationStarted ? "driving" : "preview") : "location",
+  );
+  const [navigationActive, setNavigationActive] = useState(boot?.navigationStarted ?? false);
   const [tripId, setTripId] = useState<string | null>(boot?.tripId ?? null);
   const [destinationQuery, setDestinationQuery] = useState(
     boot ? (boot.destination.label.split(",")[0] ?? boot.destination.label) : "",
@@ -112,8 +121,6 @@ export function DriveMode() {
   const coordsRef = useRef(geo.coords);
   const tripIdRef = useRef(tripId);
   const submittingRef = useRef(false);
-  const lastVoiceAtRef = useRef(0);
-  const handleVoiceRef = useRef<(text: string) => void>(() => {});
   const autoGpsStarted = useRef(false);
   const bootSynced = useRef(false);
   const destinationRef = useRef(destination);
@@ -121,6 +128,9 @@ export function DriveMode() {
   const lastRecalcPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastRecalcAtRef = useRef(0);
   const recalcInFlightRef = useRef(false);
+  const navigationActiveRef = useRef(navigationActive);
+  const reportLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   phaseRef.current = phase;
   coordsRef.current = geo.coords;
@@ -128,17 +138,34 @@ export function DriveMode() {
   submittingRef.current = submitting;
   destinationRef.current = destination;
   routeRef.current = route;
+  navigationActiveRef.current = navigationActive;
 
   useEffect(() => {
-    if (phase !== "driving" || !route || !geo.coords) return;
-    const id = window.setInterval(() => setNavClock((t) => t + 1), 15000);
+    if (!route) return;
+    if (phase !== "preview" && !(phase === "driving" && navigationActive)) return;
+    const id = window.setInterval(() => setNavClock((t) => t + 1), 15_000);
     return () => clearInterval(id);
-  }, [phase, route, geo.coords]);
+  }, [phase, navigationActive, route]);
 
-  const navStats = useMemo(() => {
-    if (phase !== "driving" || !route || !geo.coords) return null;
-    return computeNavigationStats(geo.coords, route, geo.coords.speed, destination);
-  }, [phase, route, geo.coords, destination, navClock]);
+  const displayStats = useMemo(() => {
+    if (!route || !geo.coords) return null;
+
+    if (phase === "driving" && navigationActive) {
+      const speedMps = speedKmh != null ? speedKmh / 3.6 : geo.coords.speed;
+      return computeNavigationStats(geo.coords, route, speedMps, destination);
+    }
+
+    if (phase === "preview") {
+      return {
+        remainingSeconds: route.durationSeconds,
+        remainingMeters: route.distanceMeters,
+        arrivalTime: formatArrivalTime(route.durationSeconds),
+        progress: 0,
+      };
+    }
+
+    return null;
+  }, [phase, navigationActive, route, geo.coords, destination, navClock, speedKmh]);
 
   const { data: vehicles } = useQuery({
     queryKey: ["vehicles"],
@@ -170,6 +197,7 @@ export function DriveMode() {
     setTollTotalCents(0);
     setTollPaid(false);
     setTripReports([]);
+    setNavigationActive(false);
     setPhase("route");
     toast.message(status === "completed" ? "Viagem concluída!" : "Rota expirada");
     if (status === "completed") speak("Viagem concluída. Boa chegada!");
@@ -182,6 +210,7 @@ export function DriveMode() {
       r: RouteResult,
       tollData: ReturnType<typeof calculateTollsAlongRoute>,
       keepReportIds?: string[],
+      navigationStarted?: boolean,
     ) => {
       const existing = loadTrip();
       const stored: StoredTrip = {
@@ -193,6 +222,7 @@ export function DriveMode() {
         startedAt: existing?.tripId === id ? existing.startedAt : Date.now(),
         expiresAt: createTripExpiry(r.durationSeconds),
         reportIds: keepReportIds ?? (existing?.tripId === id ? existing.reportIds : []),
+        navigationStarted: navigationStarted ?? existing?.navigationStarted ?? false,
       };
       saveTrip(stored);
     },
@@ -203,10 +233,11 @@ export function DriveMode() {
     async (
       dest: GeocodeResult,
       from: { lat: number; lng: number },
-      opts: { silent?: boolean; isNewTrip?: boolean } = {},
+      opts: { silent?: boolean; isNewTrip?: boolean; startNavigation?: boolean } = {},
     ) => {
-      const { silent = false, isNewTrip = false } = opts;
-      const isUpdate = !!tripIdRef.current && phaseRef.current === "driving" && !isNewTrip;
+      const { silent = false, isNewTrip = false, startNavigation = false } = opts;
+      const isUpdate =
+        !!tripIdRef.current && navigationActiveRef.current && phaseRef.current === "driving" && !isNewTrip;
 
       if (!silent) setRouting(true);
 
@@ -249,8 +280,23 @@ export function DriveMode() {
         setTollTotalCents(tollData.totalCents);
         setTollEstimated(tollData.hasEstimate);
         if (!isUpdate) setTollPaid(false);
-        setPhase("driving");
-        persistTrip(id, dest, r, tollData, keepReportIds);
+
+        if (startNavigation) {
+          setNavigationActive(true);
+          setPhase("driving");
+        } else if (!silent && !navigationActiveRef.current) {
+          setNavigationActive(false);
+          setPhase("preview");
+        }
+
+        persistTrip(
+          id,
+          dest,
+          r,
+          tollData,
+          keepReportIds,
+          startNavigation || navigationActiveRef.current,
+        );
 
         lastRecalcPosRef.current = { lat: from.lat, lng: from.lng };
         lastRecalcAtRef.current = Date.now();
@@ -261,9 +307,11 @@ export function DriveMode() {
             `${action}. ${formatDistance(r.distanceMeters)}, cerca de ${formatDuration(r.durationSeconds)}. Toque no microfone para reportar.`,
           );
           toast.success(
-            isUpdate
-              ? "Rota atualizada para o novo destino"
-              : "Percurso definido. Toque no microfone para reportar por voz.",
+            startNavigation
+              ? "Navegação iniciada"
+              : isUpdate
+                ? "Rota atualizada para o novo destino"
+                : "Rota pronta. Toque em Iniciar para começar.",
           );
           if (tollData.totalCents > 0) setTollDialogOpen(true);
         }
@@ -281,7 +329,9 @@ export function DriveMode() {
       const dest = destinationRef.current;
       const coords = coordsRef.current;
       const currentRoute = routeRef.current;
-      if (!dest || !coords || !currentRoute || recalcInFlightRef.current) return;
+      if (!dest || !coords || !currentRoute || recalcInFlightRef.current || !navigationActiveRef.current) {
+        return;
+      }
 
       const sinceLast = Date.now() - lastRecalcAtRef.current;
       const offRoute = offRouteDistanceMeters(coords, currentRoute.coordinates);
@@ -305,55 +355,44 @@ export function DriveMode() {
     [applyRoute],
   );
 
-  const handleVoice = useCallback(
+  const submitVoiceReport = useCallback(
     async (text: string) => {
-      if (phaseRef.current !== "driving" || !coordsRef.current || submittingRef.current) return;
-
-      const now = Date.now();
-      if (now - lastVoiceAtRef.current < 1000) return;
-      lastVoiceAtRef.current = now;
+      const loc = reportLocationRef.current;
+      if (!loc || !navigationActiveRef.current || submittingRef.current) return;
 
       setLastVoice(text);
 
       let categoria: CategoriaKey | null = null;
-      let descricao = text;
+      let descricao = text.trim();
 
-      const local = parseVoiceCommand(text);
-      if (local.type === "cancel") {
-        toast.message("Comando cancelado");
-        speak("Cancelado");
+      if (!descricao) {
+        toast.message("Nenhuma fala detectada. Tente novamente.");
         return;
       }
 
-      if (local.type === "report_prompt") {
-        toast.message("Descreva a ocorrência", { description: VOICE_HINTS[0] });
-        speak("O que você está vendo na rodovia?");
+      const local = parseVoiceCommand(text);
+      if (local.type === "cancel") {
+        toast.message("Reporte cancelado");
         return;
       }
 
       if (local.type === "categoria") {
         categoria = local.categoria;
-        descricao = text;
       } else {
         const inferred = inferReportFromNaturalSpeech(text);
         if (inferred && inferred.confianca >= 0.5) {
           categoria = inferred.categoria;
-          descricao = text;
         } else {
           try {
             const interpreted = await interpretVoice({ data: { text } });
-
             if (!interpreted.isReport || !interpreted.categoria || interpreted.confianca < 0.35) {
-              toast.message("Descreva a ocorrência naturalmente", {
-                description: VOICE_HINTS[0],
-              });
+              toast.message("Não foi possível identificar a categoria. Tente ser mais específico.");
               return;
             }
-
             categoria = interpreted.categoria;
             descricao = interpreted.descricao || text;
           } catch {
-            toast.error("Erro ao interpretar. Tente: tem um cavalo na pista, acidente à frente...");
+            toast.error("Erro ao interpretar o áudio. Tente novamente.");
             return;
           }
         }
@@ -362,23 +401,22 @@ export function DriveMode() {
       if (!categoria) return;
 
       const cat = CATEGORIAS[categoria];
-      const currentCoords = coordsRef.current;
       const currentTripId = tripIdRef.current;
       setSubmitting(true);
 
       try {
         const r = await submitReport({
           categoria,
-          descricao: `Reporte por voz: ${descricao}`,
-          lat: currentCoords.lat,
-          lng: currentCoords.lng,
+          descricao,
+          lat: loc.lat,
+          lng: loc.lng,
           tripId: currentTripId ?? undefined,
         });
 
         const marker: TripReportMarker = {
           id: r.id,
-          lat: currentCoords.lat,
-          lng: currentCoords.lng,
+          lat: loc.lat,
+          lng: loc.lng,
           categoria,
         };
         setTripReports((prev) => [...prev, marker]);
@@ -396,24 +434,36 @@ export function DriveMode() {
         speak("Não foi possível enviar o reporte");
       } finally {
         setSubmitting(false);
+        reportLocationRef.current = null;
       }
     },
     [validar, interpretVoice, qc],
   );
 
-  handleVoiceRef.current = handleVoice;
-
-  const enableMic = useCallback(() => {
-    if (!voice.supported) {
-      toast.error("Use Chrome no celular para comandos de voz");
+  const startVoiceReport = useCallback(() => {
+    if (!navigationActiveRef.current) {
+      toast.error("Inicie a navegação antes de reportar");
       return false;
     }
-    const ok = voice.enableFromGesture((text) => handleVoiceRef.current(text));
+    if (!geo.coords) {
+      toast.error("Ative o GPS para reportar");
+      return false;
+    }
+    if (!voice.supported) {
+      toast.error("Use Chrome no celular para reportes por voz");
+      return false;
+    }
+
+    reportLocationRef.current = { lat: geo.coords.lat, lng: geo.coords.lng };
+    const ok = voice.startReportCapture((text) => {
+      void submitVoiceReport(text);
+    });
+
     if (!ok) {
       toast.error("Não foi possível iniciar o microfone. Toque novamente e permita o acesso.");
     }
     return ok;
-  }, [voice]);
+  }, [geo.coords, voice, submitVoiceReport]);
 
   useEffect(() => {
     if (!autoGpsStarted.current) {
@@ -470,11 +520,18 @@ export function DriveMode() {
         .eq("status", "paid")
         .maybeSingle();
       setTollPaid(!!paid);
+
+      if (saved.navigationStarted) {
+        setNavigationActive(true);
+        setPhase("driving");
+      } else {
+        setPhase("preview");
+      }
     })();
   }, []);
 
   useEffect(() => {
-    if (phase !== "driving" || !tripId) return;
+    if (phase !== "driving" || !navigationActive || !tripId) return;
     const stored = loadTrip();
     if (!stored) return;
 
@@ -485,26 +542,46 @@ export function DriveMode() {
 
     const id = window.setInterval(tick, 4000);
     return () => clearInterval(id);
-  }, [phase, tripId, finishTrip]);
+  }, [phase, navigationActive, tripId, finishTrip]);
 
   useEffect(() => {
     const q = destinationQuery.trim();
-    if (q.length < 3) {
+    if (q.length < 2) {
       setSuggestions([]);
       return;
     }
-    const timer = setTimeout(async () => {
+
+    const timer = window.setTimeout(async () => {
+      searchAbortRef.current?.abort();
+      const ac = new AbortController();
+      searchAbortRef.current = ac;
       setSearching(true);
       try {
-        setSuggestions(await searchPlaces(q));
-      } catch {
-        /* noop */
+        setSuggestions(await searchPlaces(q, ac.signal));
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") {
+          /* noop */
+        }
       } finally {
-        setSearching(false);
+        if (!ac.signal.aborted) setSearching(false);
       }
-    }, 400);
-    return () => clearTimeout(timer);
+    }, 200);
+
+    return () => {
+      clearTimeout(timer);
+      searchAbortRef.current?.abort();
+    };
   }, [destinationQuery]);
+
+  useEffect(() => {
+    if (phase !== "preview" || !destination || !geo.coords) return;
+
+    const id = window.setInterval(() => {
+      void applyRoute(destination, geo.coords!, { silent: true, isNewTrip: false });
+    }, 20_000);
+
+    return () => clearInterval(id);
+  }, [phase, destination, geo.coords?.lat, geo.coords?.lng, applyRoute]);
 
   useEffect(() => {
     if (vehicles?.length && !selectedVehicleId) {
@@ -513,7 +590,7 @@ export function DriveMode() {
   }, [vehicles, selectedVehicleId]);
 
   useEffect(() => {
-    if (phase !== "driving" || !destination || !geo.coords || !route) return;
+    if (phase !== "driving" || !navigationActive || !destination || !geo.coords || !route) return;
 
     if (!lastRecalcPosRef.current) {
       lastRecalcPosRef.current = { lat: geo.coords.lat, lng: geo.coords.lng };
@@ -522,7 +599,7 @@ export function DriveMode() {
 
     const id = window.setInterval(() => void recalculateRoute({ silent: true }), 6000);
     return () => clearInterval(id);
-  }, [phase, destination, route?.distanceMeters, geo.coords?.lat, geo.coords?.lng, recalculateRoute]);
+  }, [phase, navigationActive, destination, route?.distanceMeters, geo.coords?.lat, geo.coords?.lng, recalculateRoute]);
 
   async function buildRoute(dest: GeocodeResult) {
     if (!geo.coords) return toast.error("Ative a localização primeiro");
@@ -533,11 +610,24 @@ export function DriveMode() {
     setSearchFocused(false);
 
     try {
-      const isNewTrip = !tripId || phase !== "driving";
-      await applyRoute(dest, geo.coords, { silent: false, isNewTrip });
+      await applyRoute(dest, geo.coords, {
+        silent: false,
+        isNewTrip: !tripId,
+        startNavigation: navigationActive,
+      });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Não foi possível traçar a rota";
       toast.error(msg);
+    }
+  }
+
+  async function startNavigation() {
+    if (!destination || !geo.coords) return toast.error("Defina um destino primeiro");
+    try {
+      await applyRoute(destination, geo.coords, { silent: false, startNavigation: true });
+      speak("Navegação iniciada. Boa viagem!");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível iniciar");
     }
   }
 
@@ -573,19 +663,23 @@ export function DriveMode() {
     toast.success("Localização ativada");
   }
 
-  const showSearch = phase === "route" || phase === "driving" || searchFocused;
+  const showSearch = phase === "route" || phase === "preview" || phase === "driving" || searchFocused;
   const micStatus = voice.supported ? voice.status : "unsupported";
   const micLabel = MIC_LABELS[micStatus as keyof typeof MIC_LABELS] ?? MIC_LABELS.idle;
+  const showNavPanel = (phase === "preview" || (phase === "driving" && navigationActive)) && route;
+  const bottomInset = showNavPanel ? (phase === "preview" ? 168 : 128) : 0;
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-background">
+      <video ref={camera.videoRef} className="hidden" playsInline muted autoPlay />
+
       <TripMap
         coords={geo.coords}
         route={route}
-        navigating={phase === "driving"}
+        navigating={navigationActive}
         reports={tripReports}
         tolls={tolls}
-        bottomInset={phase === "driving" && route ? 128 : 0}
+        bottomInset={bottomInset}
       />
 
       <div className="pointer-events-none absolute inset-0 flex flex-col">
@@ -666,16 +760,26 @@ export function DriveMode() {
               <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground shadow">
                 GPS · ±{Math.round(geo.coords.accuracy ?? 0)}m
               </span>
-              {phase === "driving" && (
+              {speedKmh != null && speedKmh > 1 && (
+                <span className="rounded-full bg-card px-3 py-1 text-xs font-medium shadow">
+                  {Math.round(speedKmh)} km/h
+                </span>
+              )}
+              {phase === "driving" && navigationActive && (
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-medium shadow ${
-                    voice.listening ? "bg-destructive text-destructive-foreground" : "bg-card"
+                    voice.capturing ? "bg-destructive text-destructive-foreground" : "bg-card"
                   }`}
                 >
                   {micLabel}
                 </span>
               )}
-              {phase === "driving" && route && (
+              {camera.active && (
+                <span className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white shadow">
+                  Câmera · {camera.bufferMinutes} min
+                </span>
+              )}
+              {(phase === "preview" || phase === "driving") && route && (
                 <button
                   type="button"
                   onClick={() => setTollDialogOpen(true)}
@@ -720,7 +824,14 @@ export function DriveMode() {
           </div>
         )}
 
-        {phase === "driving" && lastVoice && (
+        {voice.capturing && voice.reportTranscript && (
+          <div className="pointer-events-auto mx-3 mb-2 rounded-xl border border-destructive/40 bg-card/95 px-3 py-2 shadow-lg backdrop-blur">
+            <p className="text-xs text-destructive">Gravando reporte...</p>
+            <p className="text-sm">&quot;{voice.reportTranscript}&quot;</p>
+          </div>
+        )}
+
+        {phase === "driving" && lastVoice && !voice.capturing && (
           <div className="pointer-events-auto mx-3 mb-2 rounded-xl border bg-card/90 px-3 py-2 shadow-lg backdrop-blur">
             <p className="text-xs text-muted-foreground">Último comando</p>
             <p className="text-sm italic">&quot;{lastVoice}&quot;</p>
@@ -728,24 +839,24 @@ export function DriveMode() {
         )}
       </div>
 
-      {phase === "driving" && route && navStats && (
+      {showNavPanel && displayStats && (
         <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 border-t border-border/60 bg-card/98 shadow-[0_-8px_32px_rgba(0,0,0,.12)] backdrop-blur-xl">
           <div className="px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <div className="flex items-end justify-between gap-4">
               <div>
                 <p className="font-display text-4xl font-bold tabular-nums leading-none">
-                  {formatDuration(navStats.remainingSeconds)}
+                  {formatDuration(displayStats.remainingSeconds)}
                 </p>
                 <p className="mt-1 text-sm font-medium text-muted-foreground">
-                  {formatDistance(navStats.remainingMeters)}
-                  {geo.coords?.speed != null && geo.coords.speed > 0.5 && (
-                    <span> · {(geo.coords.speed * 3.6).toFixed(0)} km/h</span>
+                  {formatDistance(displayStats.remainingMeters)}
+                  {speedKmh != null && speedKmh > 1 && navigationActive && (
+                    <span> · {Math.round(speedKmh)} km/h</span>
                   )}
                 </p>
               </div>
               <div className="text-right">
                 <p className="font-display text-2xl font-bold tabular-nums text-primary">
-                  {navStats.arrivalTime}
+                  {displayStats.arrivalTime}
                 </p>
                 <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   chegada
@@ -762,6 +873,12 @@ export function DriveMode() {
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Recalculando rota...
               </p>
+            )}
+            {phase === "preview" && (
+              <Button className="mt-3 w-full gap-2" size="lg" onClick={startNavigation} disabled={routing}>
+                <Navigation className="h-5 w-5" />
+                Iniciar
+              </Button>
             )}
           </div>
         </div>
@@ -790,8 +907,13 @@ export function DriveMode() {
         </nav>
       )}
 
-      {tollDialogOpen && phase === "driving" && (
-        <div className="pointer-events-auto absolute inset-x-3 bottom-[calc(8.5rem+env(safe-area-inset-bottom))] z-50 rounded-2xl border bg-card p-4 shadow-2xl">
+      {tollDialogOpen && (phase === "preview" || phase === "driving") && (
+        <div
+          className="pointer-events-auto absolute inset-x-3 z-50 rounded-2xl border bg-card p-4 shadow-2xl"
+          style={{
+            bottom: `calc(${phase === "preview" ? "11rem" : "8.5rem"} + env(safe-area-inset-bottom))`,
+          }}
+        >
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-display text-lg font-bold">Pedágios na rota</h3>
@@ -859,38 +981,49 @@ export function DriveMode() {
         </div>
       )}
 
-      {phase === "driving" && (
-        <button
-          type="button"
-          disabled={submitting || !voice.supported}
-          onClick={() => {
-            if (voice.listening) {
-              voice.stop();
-            } else {
-              enableMic();
-            }
-          }}
-          className={`pointer-events-auto absolute right-4 flex h-16 w-16 flex-col items-center justify-center rounded-full shadow-2xl transition ${
-            voice.listening
-              ? "bg-destructive text-destructive-foreground animate-pulse"
-              : voice.status === "denied"
-                ? "bg-muted text-muted-foreground"
-                : "bg-primary text-primary-foreground"
-          }`}
-          style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}
-          title={micLabel}
-        >
-          {submitting ? (
-            <Loader2 className="h-7 w-7 animate-spin" />
-          ) : voice.listening ? (
-            <Mic className="h-7 w-7" />
-          ) : (
-            <MicOff className="h-7 w-7" />
-          )}
-        </button>
+      {phase === "driving" && navigationActive && (
+        <>
+          <button
+            type="button"
+            onClick={() => void camera.toggle()}
+            className={`pointer-events-auto absolute left-4 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition ${
+              camera.active ? "bg-red-600 text-white animate-pulse" : "bg-card text-foreground ring-1 ring-border"
+            }`}
+            style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}
+            title={camera.active ? `Câmera gravando · ${camera.bufferMinutes} min` : "Câmera de segurança"}
+          >
+            <Video className="h-6 w-6" />
+          </button>
+
+          <button
+            type="button"
+            disabled={submitting || !voice.supported}
+            onClick={() => {
+              if (voice.capturing) voice.stop();
+              else startVoiceReport();
+            }}
+            className={`pointer-events-auto absolute right-4 flex h-16 w-16 flex-col items-center justify-center rounded-full shadow-2xl transition ${
+              voice.capturing
+                ? "bg-destructive text-destructive-foreground animate-pulse"
+                : voice.status === "denied"
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-primary text-primary-foreground"
+            }`}
+            style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}
+            title={micLabel}
+          >
+            {submitting ? (
+              <Loader2 className="h-7 w-7 animate-spin" />
+            ) : voice.capturing ? (
+              <Mic className="h-7 w-7" />
+            ) : (
+              <MicOff className="h-7 w-7" />
+            )}
+          </button>
+        </>
       )}
 
-      {phase === "driving" && !geo.tracking && (
+      {phase === "driving" && navigationActive && !geo.tracking && (
         <div
           className="pointer-events-auto absolute inset-x-3 z-40"
           style={{ bottom: "calc(8.5rem + env(safe-area-inset-bottom))" }}

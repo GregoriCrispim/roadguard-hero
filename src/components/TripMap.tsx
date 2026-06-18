@@ -69,8 +69,9 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
   );
 
   useEffect(() => {
-    if (navigating) setFollow(true);
-  }, [navigating, route?.distanceMeters, setFollow]);
+    if (!navigating) return;
+    setFollow(true);
+  }, [navigating, setFollow]);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,9 +104,6 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
       };
 
       map.on("dragstart", markUserDrag);
-      map.on("zoomstart", (e) => {
-        if ((e as { originalEvent?: Event }).originalEvent) markUserDrag();
-      });
 
       mapRef.current = map;
     })();
@@ -141,17 +139,7 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
       const map = mapRef.current;
       const target = targetRef.current;
       if (map && target && navigating && followingRef.current) {
-        let zoom = map.getZoom();
-        if (zoom < MIN_NAV_ZOOM) zoom = NAV_ZOOM;
-        if (coords?.speed != null && coords.speed > 0) {
-          const kmh = coords.speed * 3.6;
-          if (kmh > 80) zoom = MIN_NAV_ZOOM;
-          else if (kmh > 40) zoom = NAV_ZOOM - 1;
-          else zoom = NAV_ZOOM;
-        } else {
-          zoom = NAV_ZOOM;
-        }
-        zoom = Math.min(MAX_NAV_ZOOM, Math.max(MIN_NAV_ZOOM, zoom));
+        const zoom = map.getZoom();
 
         programmaticMoveRef.current = true;
         centerOnUserWithOffset(map, target.lat, target.lng, zoom);
@@ -162,7 +150,7 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [navigating, coords?.speed]);
+  }, [navigating]);
 
   useEffect(() => {
     if (!mapRef.current || !coords) return;
@@ -293,7 +281,8 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
     if (!map || !target) return;
     setFollow(true);
     programmaticMoveRef.current = true;
-    centerOnUserWithOffset(map, target.lat, target.lng, NAV_ZOOM);
+    const zoom = Math.max(map.getZoom(), NAV_ZOOM);
+    centerOnUserWithOffset(map, target.lat, target.lng, zoom);
     programmaticMoveRef.current = false;
   };
 

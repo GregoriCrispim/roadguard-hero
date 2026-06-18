@@ -12,21 +12,52 @@ export type RouteResult = {
   coordinates: [number, number][];
 };
 
-export async function searchPlaces(query: string): Promise<GeocodeResult[]> {
-  const q = query.trim();
-  if (q.length < 3) return [];
+const searchCache = new Map<string, { results: GeocodeResult[]; ts: number }>();
+const CACHE_TTL_MS = 120_000;
 
+function formatPhotonLabel(props: Record<string, string | undefined>): string {
+  const parts = [props.name, props.street, props.city, props.state, props.country].filter(Boolean);
+  return [...new Set(parts)].join(", ");
+}
+
+async function searchPhoton(q: string, signal?: AbortSignal): Promise<GeocodeResult[]> {
+  const url = new URL("https://photon.komoot.io/api/");
+  url.searchParams.set("q", q);
+  url.searchParams.set("limit", "6");
+  url.searchParams.set("lang", "pt");
+
+  const res = await fetch(url.toString(), { signal, headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error("Photon falhou");
+
+  const data = (await res.json()) as {
+    features?: Array<{
+      geometry: { coordinates: [number, number] };
+      properties: Record<string, string | undefined>;
+    }>;
+  };
+
+  return (data.features ?? [])
+    .map((f) => ({
+      label: formatPhotonLabel(f.properties),
+      lat: f.geometry.coordinates[1],
+      lng: f.geometry.coordinates[0],
+    }))
+    .filter((r) => r.label.length > 0);
+}
+
+async function searchNominatim(q: string, signal?: AbortSignal): Promise<GeocodeResult[]> {
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", q);
   url.searchParams.set("format", "json");
   url.searchParams.set("limit", "6");
   url.searchParams.set("countrycodes", "br");
-  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("addressdetails", "0");
 
   const res = await fetch(url.toString(), {
+    signal,
     headers: { Accept: "application/json" },
   });
-  if (!res.ok) throw new Error("Falha ao buscar endereço");
+  if (!res.ok) throw new Error("Nominatim falhou");
 
   const data = (await res.json()) as Array<{ display_name: string; lat: string; lon: string }>;
   return data.map((item) => ({
@@ -34,6 +65,29 @@ export async function searchPlaces(query: string): Promise<GeocodeResult[]> {
     lat: Number(item.lat),
     lng: Number(item.lon),
   }));
+}
+
+export async function searchPlaces(query: string, signal?: AbortSignal): Promise<GeocodeResult[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+
+  const cacheKey = q.toLowerCase();
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.results;
+
+  try {
+    const results = await searchPhoton(q, signal);
+    if (results.length > 0) {
+      searchCache.set(cacheKey, { results, ts: Date.now() });
+      return results;
+    }
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+  }
+
+  const fallback = await searchNominatim(q, signal);
+  searchCache.set(cacheKey, { results: fallback, ts: Date.now() });
+  return fallback;
 }
 
 export async function fetchDrivingRoute(from: LatLng, to: LatLng): Promise<RouteResult> {

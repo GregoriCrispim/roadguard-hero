@@ -52,6 +52,7 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
   const prevPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const programmaticMoveRef = useRef(false);
   const routeFittedRef = useRef("");
+  const gpsFocusedRef = useRef(false);
   const [following, setFollowing] = useState(true);
   const followingRef = useRef(true);
   const navigatingRef = useRef(navigating);
@@ -70,7 +71,46 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
   useEffect(() => {
     if (!navigating) return;
     setFollow(true);
+    gpsFocusedRef.current = false;
   }, [navigating, setFollow]);
+
+  useEffect(() => {
+    if (!coords || !mapRef.current) return;
+
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < 40 && !mapRef.current; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        if (cancelled) return;
+      }
+      if (!mapRef.current || cancelled) return;
+
+      const map = mapRef.current;
+      programmaticMoveRef.current = true;
+
+      if (navigating) {
+        if (!gpsFocusedRef.current) {
+          centerOnUserWithOffset(map, coords.lat, coords.lng, NAV_ZOOM);
+          gpsFocusedRef.current = true;
+        }
+      } else if (route?.coordinates.length && !gpsFocusedRef.current) {
+        const L = (await import("leaflet")).default;
+        const bounds = L.latLngBounds(route.coordinates);
+        bounds.extend([coords.lat, coords.lng]);
+        map.fitBounds(bounds, { padding: [80, 48], maxZoom: 15 });
+        gpsFocusedRef.current = true;
+      } else if (!route && !gpsFocusedRef.current) {
+        map.setView([coords.lat, coords.lng], NAV_ZOOM);
+        gpsFocusedRef.current = true;
+      }
+
+      programmaticMoveRef.current = false;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [coords?.lat, coords?.lng, navigating, route]);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,6 +228,7 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
     const last = route.coordinates[route.coordinates.length - 1];
     const key = `${route.distanceMeters}-${route.coordinates.length}-${route.coordinates[0]?.join(",")}-${last?.join(",")}`;
     if (routeFittedRef.current === key) return;
+    gpsFocusedRef.current = false;
 
     let cancelled = false;
     (async () => {
@@ -222,6 +263,7 @@ export function TripMap({ coords, route, navigating, reports, tolls, bottomInset
       }
 
       routeFittedRef.current = key;
+      if (!navigating && coords) gpsFocusedRef.current = true;
     })();
 
     return () => {

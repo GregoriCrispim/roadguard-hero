@@ -94,9 +94,7 @@ export function DriveMode() {
   const [navigationActive, setNavigationActive] = useState(boot?.navigationStarted ?? false);
   const camera = useSecurityCamera(phase === "driving" && navigationActive);
   const [tripId, setTripId] = useState<string | null>(boot?.tripId ?? null);
-  const [destinationQuery, setDestinationQuery] = useState(
-    boot ? (boot.destination.label.split(",")[0] ?? boot.destination.label) : "",
-  );
+  const [destinationQuery, setDestinationQuery] = useState("");
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
   const [destination, setDestination] = useState<GeocodeResult | null>(boot?.destination ?? null);
   const [route, setRoute] = useState<RouteResult | null>(boot?.route ?? null);
@@ -149,12 +147,7 @@ export function DriveMode() {
   }, [phase, navigationActive, route]);
 
   const displayStats = useMemo(() => {
-    if (!route || !geo.coords) return null;
-
-    if (phase === "driving" && navigationActive) {
-      const speedMps = speedKmh != null ? speedKmh / 3.6 : geo.coords.speed;
-      return computeNavigationStats(geo.coords, route, speedMps, destination);
-    }
+    if (!route) return null;
 
     if (phase === "preview") {
       return {
@@ -163,6 +156,13 @@ export function DriveMode() {
         arrivalTime: formatArrivalTime(route.durationSeconds),
         progress: 0,
       };
+    }
+
+    if (!geo.coords) return null;
+
+    if (phase === "driving" && navigationActive) {
+      const speedMps = speedKmh != null ? speedKmh / 3.6 : geo.coords.speed;
+      return computeNavigationStats(geo.coords, route, speedMps, destination);
     }
 
     return null;
@@ -281,6 +281,10 @@ export function DriveMode() {
         setTollTotalCents(tollData.totalCents);
         setTollEstimated(tollData.hasEstimate);
         if (!isUpdate) setTollPaid(false);
+
+        setDestinationQuery("");
+        setSuggestions([]);
+        setSearchFocused(false);
 
         if (startNavigation) {
           setNavigationActive(true);
@@ -484,6 +488,10 @@ export function DriveMode() {
     if (!saved) return;
 
     (async () => {
+      setDestinationQuery("");
+      setSuggestions([]);
+      setSearchFocused(false);
+
       if (saved.route?.coordinates?.length) {
         const tollData = calculateTollsAlongRoute(
           saved.route.coordinates,
@@ -611,7 +619,7 @@ export function DriveMode() {
 
     setDestination(dest);
     setSuggestions([]);
-    setDestinationQuery(dest.label.split(",")[0] ?? dest.label);
+    setDestinationQuery("");
     setSearchFocused(false);
 
     try {
@@ -781,7 +789,7 @@ export function DriveMode() {
             )}
           </div>
 
-          {suggestions.length > 0 && showSearch && (
+          {suggestions.length > 0 && showSearch && destinationQuery.trim().length >= 2 && (
             <ul className="max-h-52 overflow-y-auto rounded-2xl border bg-card shadow-2xl">
               {suggestions.map((s) => (
                 <li key={`${s.lat}-${s.lng}`}>
@@ -797,11 +805,13 @@ export function DriveMode() {
             </ul>
           )}
 
-          {geo.tracking && geo.coords && (
+          {(geo.tracking && geo.coords) || (route && (phase === "preview" || phase === "driving")) ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground shadow">
-                GPS · ±{Math.round(geo.coords.accuracy ?? 0)}m
-              </span>
+              {geo.tracking && geo.coords && (
+                <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground shadow">
+                  GPS · ±{Math.round(geo.coords.accuracy ?? 0)}m
+                </span>
+              )}
               {speedKmh != null && speedKmh > 1 && (
                 <span className="rounded-full bg-card px-3 py-1 text-xs font-medium shadow">
                   {Math.round(speedKmh)} km/h
@@ -839,7 +849,7 @@ export function DriveMode() {
                 </button>
               )}
             </div>
-          )}
+          ) : null}
         </header>
 
         <div className="flex-1" />

@@ -22,6 +22,7 @@ import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedMapaRouteImport } from './routes/_authenticated/mapa'
 import { Route as AuthenticatedImpactoRouteImport } from './routes/_authenticated/impacto'
 import { Route as AuthenticatedGuardiaoRouteImport } from './routes/_authenticated/guardiao'
+import { Route as AuthenticatedConcessionariaRouteImport } from './routes/_authenticated/concessionaria'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 
@@ -90,6 +91,12 @@ const AuthenticatedGuardiaoRoute = AuthenticatedGuardiaoRouteImport.update({
   path: '/guardiao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedConcessionariaRoute =
+  AuthenticatedConcessionariaRouteImport.update({
+    id: '/concessionaria',
+    path: '/concessionaria',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAppRoute = AuthenticatedAppRouteImport.update({
   id: '/app',
   path: '/app',
@@ -106,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/app': typeof AuthenticatedAppRoute
+  '/concessionaria': typeof AuthenticatedConcessionariaRoute
   '/guardiao': typeof AuthenticatedGuardiaoRoute
   '/impacto': typeof AuthenticatedImpactoRoute
   '/mapa': typeof AuthenticatedMapaRoute
@@ -122,6 +130,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/app': typeof AuthenticatedAppRoute
+  '/concessionaria': typeof AuthenticatedConcessionariaRoute
   '/guardiao': typeof AuthenticatedGuardiaoRoute
   '/impacto': typeof AuthenticatedImpactoRoute
   '/mapa': typeof AuthenticatedMapaRoute
@@ -140,6 +149,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/app': typeof AuthenticatedAppRoute
+  '/_authenticated/concessionaria': typeof AuthenticatedConcessionariaRoute
   '/_authenticated/guardiao': typeof AuthenticatedGuardiaoRoute
   '/_authenticated/impacto': typeof AuthenticatedImpactoRoute
   '/_authenticated/mapa': typeof AuthenticatedMapaRoute
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/app'
+    | '/concessionaria'
     | '/guardiao'
     | '/impacto'
     | '/mapa'
@@ -174,6 +185,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/app'
+    | '/concessionaria'
     | '/guardiao'
     | '/impacto'
     | '/mapa'
@@ -191,6 +203,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/admin'
     | '/_authenticated/app'
+    | '/_authenticated/concessionaria'
     | '/_authenticated/guardiao'
     | '/_authenticated/impacto'
     | '/_authenticated/mapa'
@@ -303,6 +316,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGuardiaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/concessionaria': {
+      id: '/_authenticated/concessionaria'
+      path: '/concessionaria'
+      fullPath: '/concessionaria'
+      preLoaderRoute: typeof AuthenticatedConcessionariaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/app': {
       id: '/_authenticated/app'
       path: '/app'
@@ -323,6 +343,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedAppRoute: typeof AuthenticatedAppRoute
+  AuthenticatedConcessionariaRoute: typeof AuthenticatedConcessionariaRoute
   AuthenticatedGuardiaoRoute: typeof AuthenticatedGuardiaoRoute
   AuthenticatedImpactoRoute: typeof AuthenticatedImpactoRoute
   AuthenticatedMapaRoute: typeof AuthenticatedMapaRoute
@@ -337,6 +358,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedAppRoute: AuthenticatedAppRoute,
+  AuthenticatedConcessionariaRoute: AuthenticatedConcessionariaRoute,
   AuthenticatedGuardiaoRoute: AuthenticatedGuardiaoRoute,
   AuthenticatedImpactoRoute: AuthenticatedImpactoRoute,
   AuthenticatedMapaRoute: AuthenticatedMapaRoute,

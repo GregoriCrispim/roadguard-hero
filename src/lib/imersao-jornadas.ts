@@ -33,13 +33,7 @@ export const IMERSAO_JORNADAS: ImersaoJornada[] = [
     icone: Flame,
     cor: "#DC2626",
     disponivel: true,
-    videos: [
-      {
-        id: "cena-1",
-        src: "/videos/lv__20260618095425.mp4",
-        titulo: "Cena 1 — Partida de emergência",
-      },
-    ],
+    videos: [],
   },
 ];
 

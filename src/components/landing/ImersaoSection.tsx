@@ -77,7 +77,7 @@ export function ImersaoSection() {
       </div>
 
       <Dialog open={!!jornadaAtiva} onOpenChange={(open) => !open && fechar()}>
-        <DialogContent className="max-w-3xl gap-0 overflow-hidden p-0 sm:rounded-2xl">
+        <DialogContent className="fixed inset-0 z-50 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden border-0 bg-background p-0 shadow-none sm:rounded-none [&>button.absolute]:hidden">
           {jornadaAtiva && (
             <ImersaoPlayer key={`${jornadaAtiva.id}-${sessionKey}`} jornada={jornadaAtiva} onClose={fechar} />
           )}

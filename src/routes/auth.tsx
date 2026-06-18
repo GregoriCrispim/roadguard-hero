@@ -30,8 +30,16 @@ function AuthPage() {
     });
 
     const params = new URLSearchParams(window.location.search);
-    const authError = params.get("error_description") ?? params.get("error");
-    if (authError) toast.error(decodeURIComponent(authError.replace(/\+/g, " ")));
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const authError =
+      params.get("error_description") ??
+      params.get("error") ??
+      hashParams.get("error_description") ??
+      hashParams.get("error");
+    if (authError) {
+      toast.error(decodeURIComponent(authError.replace(/\+/g, " ")));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, [nav]);
 
   async function handleGoogle() {
@@ -76,6 +84,9 @@ function AuthPage() {
             {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
             Continuar com Google
           </Button>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Se o Google não funcionar, use e-mail e senha abaixo.
+          </p>
 
           <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
             <div className="h-px flex-1 bg-border" /> ou e-mail <div className="h-px flex-1 bg-border" />

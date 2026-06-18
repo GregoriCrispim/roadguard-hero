@@ -374,3 +374,12 @@ export function navigationHeading(
   }
   return routeBearing;
 }
+
+/** Bearing para rotação do mapa — sempre alinha a rota à direção do cursor. */
+export function mapRotationBearing(
+  position: LatLng,
+  coordinates: [number, number][],
+): number {
+  if (coordinates.length < 2) return 0;
+  return bearingAlongRoute(position, coordinates, 60);
+}

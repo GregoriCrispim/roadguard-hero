@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import "leaflet-rotate";
 import { CATEGORIAS, type CategoriaKey } from "@/lib/categorias";
-import {
-  navigationHeading,
-  smoothBearing,
-} from "@/lib/navigation";
+import { mapRotationBearing, smoothBearing } from "@/lib/navigation";
 import type { RouteResult } from "@/lib/routing";
 import { formatBRL, getTollMarkerPosition, type TollOnRoute } from "@/lib/tolls";
 import { LocateFixed } from "lucide-react";
@@ -26,10 +26,14 @@ type Props = {
   onFollowChange?: (following: boolean) => void;
 };
 
-/** Posição vertical do cursor GPS na tela (fração da altura, a partir do topo). */
 const FOLLOW_OFFSET_RATIO = 0.32;
 const NAV_ZOOM = 18;
 const ROUTE_COLOR = "#33D1FF";
+
+type RotatableMap = L.Map & {
+  setBearing(bearing: number): L.Map;
+  getBearing(): number;
+};
 
 function userNavIconHtml(size: number): string {
   return `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 4px 12px rgba(0,0,0,.55))">
@@ -39,25 +43,22 @@ function userNavIconHtml(size: number): string {
   </div>`;
 }
 
-type RotatableMap = import("leaflet").Map & {
-  setBearing(bearing: number): import("leaflet").Map;
-  getBearing(): number;
-};
-
-function centerOnUserWithOffset(
-  map: import("leaflet").Map,
+function applyNavigationView(
+  map: L.Map,
   lat: number,
   lng: number,
   zoom: number,
-  bearing = 0,
+  bearing: number,
 ) {
+  map.setView([lat, lng], zoom, { animate: false });
+  const offsetY = map.getSize().y * FOLLOW_OFFSET_RATIO;
+  if (offsetY > 0) {
+    map.panBy([0, -offsetY], { animate: false });
+  }
   const rotMap = map as RotatableMap;
   if (typeof rotMap.setBearing === "function") {
     rotMap.setBearing(bearing);
   }
-  map.setView([lat, lng], zoom, { animate: false });
-  const offsetY = map.getSize().y * FOLLOW_OFFSET_RATIO;
-  map.panBy([0, -offsetY], { animate: false });
 }
 
 export function TripMap({
@@ -67,16 +68,16 @@ export function TripMap({
   reports,
   tolls,
   bottomInset = 0,
-  speedKmh = null,
+  speedKmh: _speedKmh = null,
   onFollowChange,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<RotatableMap | null>(null);
-  const userMarkerRef = useRef<import("leaflet").Marker | null>(null);
-  const routeLayerRef = useRef<import("leaflet").Polyline | null>(null);
-  const reportLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
-  const tollLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
-  const targetRef = useRef<{ lat: number; lng: number; heading: number } | null>(null);
+  const userMarkerRef = useRef<L.Marker | null>(null);
+  const routeLayerRef = useRef<L.Polyline | null>(null);
+  const reportLayerRef = useRef<L.LayerGroup | null>(null);
+  const tollLayerRef = useRef<L.LayerGroup | null>(null);
+  const targetRef = useRef<{ lat: number; lng: number; bearing: number } | null>(null);
   const bearingRef = useRef(0);
   const programmaticMoveRef = useRef(false);
   const routeFittedRef = useRef("");
@@ -96,11 +97,20 @@ export function TripMap({
     [onFollowChange],
   );
 
+  const resolveBearing = useCallback(
+    (position: { lat: number; lng: number }) => {
+      if (route?.coordinates.length) {
+        return mapRotationBearing(position, route.coordinates);
+      }
+      return coords?.heading ?? 0;
+    },
+    [route?.coordinates, coords?.heading],
+  );
+
   useEffect(() => {
     if (!navigating) return;
     setFollow(true);
     gpsFocusedRef.current = false;
-    bearingRef.current = 0;
   }, [navigating, setFollow]);
 
   useEffect(() => {
@@ -119,15 +129,12 @@ export function TripMap({
 
       if (navigating) {
         if (!gpsFocusedRef.current) {
-          const bearing = route?.coordinates.length
-            ? navigationHeading(coords, route.coordinates, coords.heading, speedKmh)
-            : coords.heading ?? 0;
+          const bearing = resolveBearing(coords);
           bearingRef.current = bearing;
-          centerOnUserWithOffset(map, coords.lat, coords.lng, NAV_ZOOM, bearing);
+          applyNavigationView(map, coords.lat, coords.lng, NAV_ZOOM, bearing);
           gpsFocusedRef.current = true;
         }
       } else if (route?.coordinates.length && !gpsFocusedRef.current) {
-        const L = (await import("leaflet")).default;
         map.setBearing(0);
         const bounds = L.latLngBounds(route.coordinates);
         bounds.extend([coords.lat, coords.lng]);
@@ -145,49 +152,42 @@ export function TripMap({
     return () => {
       cancelled = true;
     };
-  }, [coords?.lat, coords?.lng, navigating, route, speedKmh]);
+  }, [coords?.lat, coords?.lng, navigating, route, resolveBearing]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (typeof window === "undefined" || !ref.current || mapRef.current) return;
-      const L = (await import("leaflet")).default;
-      await import("leaflet-rotate");
-      await import("leaflet/dist/leaflet.css");
-      if (cancelled) return;
+    if (!ref.current || mapRef.current) return;
 
-      const map = L.map(ref.current, {
-        zoomControl: false,
-        zoomAnimation: true,
-        fadeAnimation: true,
-        markerZoomAnimation: true,
-        inertia: true,
-        rotate: true,
-        bearing: 0,
-        touchRotate: false,
-      }).setView([-15.78, -47.93], 5) as RotatableMap;
+    const map = L.map(ref.current, {
+      zoomControl: false,
+      zoomAnimation: true,
+      fadeAnimation: true,
+      markerZoomAnimation: true,
+      inertia: true,
+      rotate: true,
+      bearing: 0,
+      touchRotate: false,
+      rotateControl: false,
+    }).setView([-15.78, -47.93], 5) as RotatableMap;
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OSM",
-        maxZoom: 19,
-      }).addTo(map);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OSM",
+      maxZoom: 19,
+    }).addTo(map);
 
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-      reportLayerRef.current = L.layerGroup().addTo(map);
-      tollLayerRef.current = L.layerGroup().addTo(map);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+    reportLayerRef.current = L.layerGroup().addTo(map);
+    tollLayerRef.current = L.layerGroup().addTo(map);
 
-      const markUserDrag = () => {
-        if (programmaticMoveRef.current || !navigatingRef.current) return;
-        setFollow(false);
-      };
+    const markUserDrag = () => {
+      if (programmaticMoveRef.current || !navigatingRef.current) return;
+      setFollow(false);
+    };
 
-      map.on("dragstart", markUserDrag);
-      mapRef.current = map;
-    })();
+    map.on("dragstart", markUserDrag);
+    mapRef.current = map;
 
     return () => {
-      cancelled = true;
-      mapRef.current?.remove();
+      map.remove();
       mapRef.current = null;
     };
   }, [setFollow]);
@@ -195,16 +195,12 @@ export function TripMap({
   useEffect(() => {
     if (!coords) return;
 
-    const heading =
-      navigating && route?.coordinates.length
-        ? navigationHeading(coords, route.coordinates, coords.heading, speedKmh)
-        : coords.heading ?? bearingRef.current;
-
-    targetRef.current = { lat: coords.lat, lng: coords.lng, heading };
+    const heading = navigating ? resolveBearing(coords) : coords.heading ?? bearingRef.current;
+    targetRef.current = { lat: coords.lat, lng: coords.lng, bearing: heading };
     if (navigating) {
-      bearingRef.current = smoothBearing(bearingRef.current, heading);
+      bearingRef.current = smoothBearing(bearingRef.current, heading, 0.18);
     }
-  }, [coords, navigating, route, speedKmh]);
+  }, [coords, navigating, resolveBearing]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -216,7 +212,7 @@ export function TripMap({
       if (map && target && navigating && followingRef.current) {
         const zoom = Math.max(map.getZoom(), NAV_ZOOM);
         programmaticMoveRef.current = true;
-        centerOnUserWithOffset(map, target.lat, target.lng, zoom, bearingRef.current);
+        applyNavigationView(map, target.lat, target.lng, zoom, bearingRef.current);
         programmaticMoveRef.current = false;
       }
       frame = requestAnimationFrame(tick);
@@ -229,33 +225,30 @@ export function TripMap({
   useEffect(() => {
     if (!mapRef.current || !coords) return;
 
-    (async () => {
-      const L = (await import("leaflet")).default;
-      const map = mapRef.current!;
-      const size = navigating ? 64 : 52;
-      const icon = L.divIcon({
-        className: "",
-        html: navigating
-          ? userNavIconHtml(size)
-          : `<div style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 3px 8px rgba(0,0,0,.5))">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="#2563EB" stroke="#fff" stroke-width="1.5">
-                <path d="M12 2 L20 20 L12 16 L4 20 Z"/>
-              </svg>
-            </div>`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-      });
+    const map = mapRef.current;
+    const size = navigating ? 64 : 52;
+    const icon = L.divIcon({
+      className: "",
+      html: navigating
+        ? userNavIconHtml(size)
+        : `<div style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 3px 8px rgba(0,0,0,.5))">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="#2563EB" stroke="#fff" stroke-width="1.5">
+              <path d="M12 2 L20 20 L12 16 L4 20 Z"/>
+            </svg>
+          </div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
 
-      if (!userMarkerRef.current) {
-        userMarkerRef.current = L.marker([coords.lat, coords.lng], {
-          icon,
-          zIndexOffset: 1000,
-        }).addTo(map);
-      } else {
-        userMarkerRef.current.setLatLng([coords.lat, coords.lng]);
-        userMarkerRef.current.setIcon(icon);
-      }
-    })();
+    if (!userMarkerRef.current) {
+      userMarkerRef.current = L.marker([coords.lat, coords.lng], {
+        icon,
+        zIndexOffset: 1000,
+      }).addTo(map);
+    } else {
+      userMarkerRef.current.setLatLng([coords.lat, coords.lng]);
+      userMarkerRef.current.setIcon(icon);
+    }
   }, [coords, navigating]);
 
   useEffect(() => {
@@ -268,8 +261,6 @@ export function TripMap({
 
     let cancelled = false;
     (async () => {
-      const L = (await import("leaflet")).default;
-
       for (let i = 0; i < 40 && !mapRef.current; i++) {
         await new Promise((r) => setTimeout(r, 50));
         if (cancelled) return;
@@ -294,10 +285,10 @@ export function TripMap({
         map.fitBounds(bounds, { padding: [80, 48], maxZoom: 15 });
         programmaticMoveRef.current = false;
       } else if (coords) {
-        const bearing = navigationHeading(coords, route.coordinates, coords.heading, speedKmh);
+        const bearing = resolveBearing(coords);
         bearingRef.current = bearing;
         programmaticMoveRef.current = true;
-        centerOnUserWithOffset(map, coords.lat, coords.lng, NAV_ZOOM, bearing);
+        applyNavigationView(map, coords.lat, coords.lng, NAV_ZOOM, bearing);
         programmaticMoveRef.current = false;
       }
 
@@ -308,51 +299,45 @@ export function TripMap({
     return () => {
       cancelled = true;
     };
-  }, [route, navigating, coords, speedKmh]);
+  }, [route, navigating, coords, resolveBearing]);
 
   useEffect(() => {
     if (!mapRef.current || !reportLayerRef.current) return;
-    (async () => {
-      const L = (await import("leaflet")).default;
-      const layer = reportLayerRef.current!;
-      layer.clearLayers();
+    const layer = reportLayerRef.current;
+    layer.clearLayers();
 
-      for (const r of reports) {
-        const c = CATEGORIAS[r.categoria];
-        const icon = L.divIcon({
-          className: "",
-          html: `<div style="width:28px;height:28px;border-radius:50%;background:${c?.cor ?? "#22C55E"};border:3px solid white;box-shadow:0 2px 10px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:14px">⚠</div>`,
-          iconSize: [28, 28],
-          iconAnchor: [14, 14],
-        });
-        L.marker([r.lat, r.lng], { icon })
-          .addTo(layer)
-          .bindPopup(`<b>${c?.label ?? "Reporte"}</b><br/><small>Seu reporte nesta viagem</small>`);
-      }
-    })();
+    for (const r of reports) {
+      const c = CATEGORIAS[r.categoria];
+      const icon = L.divIcon({
+        className: "",
+        html: `<div style="width:28px;height:28px;border-radius:50%;background:${c?.cor ?? "#22C55E"};border:3px solid white;box-shadow:0 2px 10px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:14px">⚠</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
+      L.marker([r.lat, r.lng], { icon })
+        .addTo(layer)
+        .bindPopup(`<b>${c?.label ?? "Reporte"}</b><br/><small>Seu reporte nesta viagem</small>`);
+    }
   }, [reports]);
 
   useEffect(() => {
     if (!mapRef.current || !tollLayerRef.current) return;
-    (async () => {
-      const L = (await import("leaflet")).default;
-      const layer = tollLayerRef.current!;
-      layer.clearLayers();
+    const layer = tollLayerRef.current;
+    layer.clearLayers();
 
-      for (const toll of tolls) {
-        const pos = getTollMarkerPosition(toll);
-        const icon = L.divIcon({
-          className: "",
-          html: `<div style="padding:2px 6px;border-radius:8px;background:#F59E0B;color:#111;font-size:10px;font-weight:700;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,.35)">$</div>`,
-          iconAnchor: [8, 8],
-        });
-        L.marker([pos.lat, pos.lng], { icon })
-          .addTo(layer)
-          .bindPopup(
-            `<b>${toll.name}</b><br/>${toll.highway}<br/>${formatBRL(toll.priceCarCents)}${toll.estimated ? "<br/><small>estimativa</small>" : ""}`,
-          );
-      }
-    })();
+    for (const toll of tolls) {
+      const pos = getTollMarkerPosition(toll);
+      const icon = L.divIcon({
+        className: "",
+        html: `<div style="padding:2px 6px;border-radius:8px;background:#F59E0B;color:#111;font-size:10px;font-weight:700;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,.35)">$</div>`,
+        iconAnchor: [8, 8],
+      });
+      L.marker([pos.lat, pos.lng], { icon })
+        .addTo(layer)
+        .bindPopup(
+          `<b>${toll.name}</b><br/>${toll.highway}<br/>${formatBRL(toll.priceCarCents)}${toll.estimated ? "<br/><small>estimativa</small>" : ""}`,
+        );
+    }
   }, [tolls]);
 
   const handleRecenter = () => {
@@ -362,7 +347,7 @@ export function TripMap({
     setFollow(true);
     programmaticMoveRef.current = true;
     const zoom = Math.max(map.getZoom(), NAV_ZOOM);
-    centerOnUserWithOffset(map, target.lat, target.lng, zoom, bearingRef.current);
+    applyNavigationView(map, target.lat, target.lng, zoom, bearingRef.current);
     programmaticMoveRef.current = false;
   };
 

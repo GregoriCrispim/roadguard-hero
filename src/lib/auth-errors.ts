@@ -17,6 +17,13 @@ export function authErrorMessage(error: { message: string; code?: string }): str
   if (msg.includes("rate limit") || msg.includes("too many requests")) {
     return "Muitas tentativas. Aguarde um momento e tente novamente.";
   }
+  if (
+    msg.includes("missing oauth secret") ||
+    msg.includes("unsupported provider") ||
+    msg.includes("validation_failed")
+  ) {
+    return "Login com Google não está configurado. Use e-mail e senha ou configure o Google OAuth no painel Supabase.";
+  }
 
   return error.message;
 }

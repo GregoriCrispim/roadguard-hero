@@ -16,6 +16,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { CATEGORIAS_LIST } from "@/lib/categorias";
+import { ImersaoSection } from "@/components/landing/ImersaoSection";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -40,6 +41,7 @@ function Landing() {
             <a href="#problema" className="hover:text-foreground">Problema</a>
             <a href="#solucao" className="hover:text-foreground">Solução</a>
             <a href="#como" className="hover:text-foreground">Como funciona</a>
+            <a href="#imersao" className="hover:text-foreground">Imersão</a>
             <a href="#gamificacao" className="hover:text-foreground">Gamificação</a>
             <a href="#concessionarias" className="hover:text-foreground">Concessionárias</a>
           </nav>
@@ -198,6 +200,8 @@ function Landing() {
           </div>
         </div>
       </section>
+
+      <ImersaoSection />
 
       {/* Gamificação */}
       <section id="gamificacao" className="mx-auto max-w-7xl px-4 py-20">

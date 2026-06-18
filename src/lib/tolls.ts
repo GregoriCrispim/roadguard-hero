@@ -1,13 +1,7 @@
 import type { LatLng } from "@/lib/routing";
+import { TOLL_PLAZAS, type TollPlaza } from "@/lib/toll-plazas";
 
-export type TollPlaza = {
-  id: string;
-  name: string;
-  highway: string;
-  lat: number;
-  lng: number;
-  priceCarCents: number;
-};
+export type { TollPlaza };
 
 export type TollOnRoute = {
   id: string;
@@ -19,38 +13,16 @@ export type TollOnRoute = {
   lng: number;
 };
 
-/** Praças de pedágio aproximadas em rodovias brasileiras (valores referência carro) */
-const TOLL_PLAZAS: TollPlaza[] = [
-  { id: "sp-imigrantes", name: "Imigrantes", highway: "SP-160", lat: -23.8512, lng: -46.7185, priceCarCents: 3420 },
-  { id: "sp-anchieta", name: "Anchieta", highway: "SP-150", lat: -23.912, lng: -46.389, priceCarCents: 2890 },
-  { id: "sp-cubatao", name: "Cubatão", highway: "BR-101", lat: -23.895, lng: -46.425, priceCarCents: 2650 },
-  { id: "sp-castelo", name: "Castelo Branco", highway: "SP-280", lat: -23.452, lng: -46.876, priceCarCents: 3150 },
-  { id: "sp-band", name: "Bandeirantes", highway: "SP-348", lat: -23.012, lng: -47.134, priceCarCents: 2780 },
-  { id: "sp-raposo", name: "Raposo Tavares", highway: "SP-270", lat: -23.589, lng: -46.752, priceCarCents: 2540 },
-  { id: "sp-regis", name: "Régis Bittencourt", highway: "BR-116", lat: -24.015, lng: -46.412, priceCarCents: 2980 },
-  { id: "sp-dutra-1", name: "Dutra — Guarulhos", highway: "BR-116", lat: -23.462, lng: -46.533, priceCarCents: 2240 },
-  { id: "sp-dutra-2", name: "Dutra — Jacareí", highway: "BR-116", lat: -23.305, lng: -45.965, priceCarCents: 2180 },
-  { id: "rj-arcored", name: "Arco Redentor", highway: "BR-101", lat: -22.903, lng: -43.178, priceCarCents: 1890 },
-  { id: "rj-teresopolis", name: "Teresópolis", highway: "BR-116", lat: -22.412, lng: -42.965, priceCarCents: 2240 },
-  { id: "rj-brumadinho", name: "BR-040", highway: "BR-040", lat: -20.145, lng: -44.2, priceCarCents: 1980 },
-  { id: "mg-bh-rio", name: "Conceição do Mato Dentro", highway: "BR-381", lat: -19.032, lng: -43.425, priceCarCents: 3680 },
-  { id: "mg-contagem", name: "Contagem", highway: "BR-381", lat: -19.945, lng: -44.052, priceCarCents: 2120 },
-  { id: "mg-jf", name: "Juiz de Fora", highway: "BR-040", lat: -21.764, lng: -43.35, priceCarCents: 1850 },
-  { id: "pr-curitiba", name: "Curitiba", highway: "BR-116", lat: -25.428, lng: -49.273, priceCarCents: 1950 },
-  { id: "pr-litoral", name: "Litoral Paranaense", highway: "BR-277", lat: -25.542, lng: -48.512, priceCarCents: 1680 },
-  { id: "pr-ponta-grossa", name: "Ponta Grossa", highway: "BR-376", lat: -25.095, lng: -50.161, priceCarCents: 1720 },
-  { id: "sc-florianopolis", name: "Florianópolis", highway: "BR-101", lat: -27.595, lng: -48.548, priceCarCents: 1780 },
-  { id: "sc-joinville", name: "Joinville", highway: "BR-101", lat: -26.304, lng: -48.845, priceCarCents: 1650 },
-  { id: "rs-porto", name: "Porto Alegre", highway: "BR-116", lat: -30.034, lng: -51.217, priceCarCents: 2050 },
-  { id: "ba-salvador", name: "Salvador", highway: "BR-324", lat: -12.971, lng: -38.501, priceCarCents: 1920 },
-  { id: "df-brasilia", name: "Brasília Sul", highway: "BR-040", lat: -15.839, lng: -47.923, priceCarCents: 1560 },
-  { id: "go-anapolis", name: "Anápolis", highway: "BR-060", lat: -16.236, lng: -48.955, priceCarCents: 1420 },
-  { id: "es-vitoria", name: "Vitória", highway: "BR-101", lat: -20.315, lng: -40.312, priceCarCents: 1650 },
-  { id: "pe-recife", name: "Recife", highway: "BR-101", lat: -8.047, lng: -34.877, priceCarCents: 1580 },
-  { id: "ce-fortaleza", name: "Fortaleza", highway: "BR-116", lat: -3.731, lng: -38.526, priceCarCents: 1520 },
-];
+/** Raio para considerar praça na rota (rodovias podem ter offset no traçado OSRM). */
+const PROXIMITY_METERS = 4500;
 
-const PROXIMITY_METERS = 1800;
+/** Tarifa média tag por km (referência Google Maps / ANTT, carro eixo 2). */
+const TAG_RATE_CENTS_PER_KM = 11.7;
+
+/** Valor médio por praça estimada para distribuir complemento. */
+const AVG_PLAZA_CENTS = 2100;
+
+const MIN_ROUTE_KM_FOR_ESTIMATE = 25;
 
 function haversineMeters(a: LatLng, b: LatLng): number {
   const R = 6371000;
@@ -115,15 +87,21 @@ function closestPointOnPolyline(
   return { distance: bestDist, lat: bestLat, lng: bestLng, routeIndex: bestIndex };
 }
 
+function expectedTollTotalCents(distanceMeters: number): number {
+  const km = distanceMeters / 1000;
+  if (km < MIN_ROUTE_KM_FOR_ESTIMATE) return 0;
+  return Math.round(km * TAG_RATE_CENTS_PER_KM);
+}
+
 function estimateTollsByDistance(
   coordinates: [number, number][],
   distanceMeters: number,
 ): { tolls: TollOnRoute[]; totalCents: number } {
-  const km = distanceMeters / 1000;
-  if (km < 20 || coordinates.length < 2) return { tolls: [], totalCents: 0 };
+  const totalCents = expectedTollTotalCents(distanceMeters);
+  if (totalCents <= 0 || coordinates.length < 2) return { tolls: [], totalCents: 0 };
 
-  const plazas = Math.max(1, Math.round(km / 80));
-  const priceEach = Math.round((km * 18) / plazas);
+  const plazas = Math.max(1, Math.round(totalCents / AVG_PLAZA_CENTS));
+  const priceEach = Math.round(totalCents / plazas);
   const tolls: TollOnRoute[] = Array.from({ length: plazas }, (_, i) => {
     const idx = Math.min(
       coordinates.length - 1,
@@ -144,15 +122,43 @@ function estimateTollsByDistance(
   return { tolls, totalCents: priceEach * plazas };
 }
 
+function supplementEstimatedTolls(
+  coordinates: [number, number][],
+  supplementCents: number,
+  existingCount: number,
+): TollOnRoute[] {
+  if (supplementCents <= 0 || coordinates.length < 2) return [];
+
+  const plazas = Math.max(1, Math.min(20, Math.round(supplementCents / AVG_PLAZA_CENTS)));
+  const priceEach = Math.round(supplementCents / plazas);
+  const step = Math.max(1, Math.floor(coordinates.length / (plazas + 1)));
+
+  return Array.from({ length: plazas }, (_, i) => {
+    const idx = Math.min(coordinates.length - 1, step * (i + 1));
+    const [lat, lng] = coordinates[idx];
+    return {
+      id: `estimativa-sup-${existingCount + i + 1}`,
+      name: `Praça estimada ${existingCount + i + 1}`,
+      highway: "Rota",
+      priceCarCents: priceEach,
+      estimated: true,
+      lat,
+      lng,
+    };
+  });
+}
+
 export function calculateTollsAlongRoute(
   coordinates: [number, number][],
   distanceMeters = 0,
 ): { tolls: TollOnRoute[]; totalCents: number; hasEstimate: boolean } {
   const found: Array<TollOnRoute & { routeIndex: number }> = [];
+  const usedIds = new Set<string>();
 
   for (const plaza of TOLL_PLAZAS) {
     const closest = closestPointOnPolyline({ lat: plaza.lat, lng: plaza.lng }, coordinates);
-    if (closest.distance <= PROXIMITY_METERS) {
+    if (closest.distance <= PROXIMITY_METERS && !usedIds.has(plaza.id)) {
+      usedIds.add(plaza.id);
       found.push({
         id: plaza.id,
         name: plaza.name,
@@ -167,14 +173,35 @@ export function calculateTollsAlongRoute(
 
   found.sort((a, b) => a.routeIndex - b.routeIndex);
 
-  if (found.length > 0) {
-    const tolls = found.map(({ routeIndex: _, ...toll }) => toll);
-    const totalCents = tolls.reduce((s, t) => s + t.priceCarCents, 0);
-    return { tolls, totalCents, hasEstimate: false };
+  const expectedTotal = expectedTollTotalCents(distanceMeters);
+  const catalogTolls = found.map(({ routeIndex: _, ...toll }) => toll);
+  const catalogTotal = catalogTolls.reduce((s, t) => s + t.priceCarCents, 0);
+
+  if (catalogTolls.length === 0) {
+    const estimated = estimateTollsByDistance(coordinates, distanceMeters);
+    return { ...estimated, hasEstimate: estimated.totalCents > 0 };
   }
 
-  const estimated = estimateTollsByDistance(coordinates, distanceMeters);
-  return { ...estimated, hasEstimate: estimated.totalCents > 0 };
+  const km = distanceMeters / 1000;
+  const minExpectedPlazas = Math.max(1, Math.floor(km / 100));
+  const undercounted =
+    expectedTotal > 0 &&
+    (catalogTotal < expectedTotal * 0.85 || catalogTolls.length < minExpectedPlazas);
+
+  if (undercounted) {
+    const targetTotal = Math.max(expectedTotal, catalogTotal);
+    const supplementCents = Math.max(0, targetTotal - catalogTotal);
+    const supplementTolls = supplementEstimatedTolls(
+      coordinates,
+      supplementCents,
+      catalogTolls.length,
+    );
+    const tolls = [...catalogTolls, ...supplementTolls];
+    const totalCents = catalogTotal + supplementTolls.reduce((s, t) => s + t.priceCarCents, 0);
+    return { tolls, totalCents, hasEstimate: true };
+  }
+
+  return { tolls: catalogTolls, totalCents: catalogTotal, hasEstimate: false };
 }
 
 export function formatBRL(cents: number): string {

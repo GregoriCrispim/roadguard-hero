@@ -1,7 +1,17 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { resolvePostLoginPath } from "@/hooks/useUserRole";
+import {
+  canAccessPortal,
+  fetchUserRoles,
+  parsePortal,
+  portalLabel,
+  portalToPath,
+  readStoredLoginPortal,
+  resolvePathForPortal,
+  storeLoginPortal,
+  type Portal,
+} from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,8 +20,6 @@ import { RoadHeroLogo } from "@/components/RoadHeroLogo";
 import { authErrorMessage } from "@/lib/auth-errors";
 import { toast } from "sonner";
 import { ArrowLeft, Building2, Gift, Globe2, Loader2, Shield } from "lucide-react";
-
-type Portal = "guardiao" | "concessionaria" | "abcr" | "parceiro";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -25,14 +33,25 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const nav = useNavigate();
-  const [portal, setPortal] = useState<Portal>("guardiao");
+  const [portal, setPortal] = useState<Portal>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return parsePortal(params.get("portal") ?? readStoredLoginPortal());
+  });
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  function selectPortal(next: Portal) {
+    setPortal(next);
+    storeLoginPortal(next);
+  }
 
   useEffect(() => {
     void (async () => {
       const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        const path = await resolvePostLoginPath();
+      if (!data.session) return;
+
+      const stored = readStoredLoginPortal() ?? portal;
+      const path = await resolvePathForPortal(stored);
+      if (path) {
         nav({ to: path as "/app", replace: true });
       }
     })();
@@ -48,35 +67,30 @@ function AuthPage() {
       toast.error(decodeURIComponent(authError.replace(/\+/g, " ")));
       window.history.replaceState({}, "", window.location.pathname);
     }
-  }, [nav]);
+  }, [nav, portal]);
 
-  async function afterLogin() {
-    const path = await resolvePostLoginPath();
-    if (portal === "concessionaria" && path !== "/concessionaria" && path !== "/abcr") {
-      toast.error("Esta conta não tem perfil de concessionária. Use o portal Guardião ou solicite acesso à ABCR.");
+  async function afterLogin(selectedPortal: Portal = portal) {
+    storeLoginPortal(selectedPortal);
+    const roles = await fetchUserRoles();
+
+    if (!canAccessPortal(roles, selectedPortal)) {
+      await supabase.auth.signOut();
+      toast.error(`Esta conta não tem acesso ao portal ${portalLabel(selectedPortal)}.`);
       return;
     }
-    if (portal === "abcr" && path !== "/abcr") {
-      toast.error("Esta conta não tem perfil ABCR.");
-      return;
-    }
-    if (portal === "parceiro" && path !== "/parceiro" && path !== "/abcr") {
-      toast.error("Esta conta não tem perfil de parceiro.");
-      return;
-    }
-    if (portal === "guardiao" && (path === "/concessionaria" || path === "/abcr" || path === "/parceiro")) {
-      nav({ to: path as "/concessionaria", replace: true });
-      return;
-    }
-    nav({ to: (portal === "guardiao" ? "/app" : path) as "/app", replace: true });
+
+    const path = portalToPath(selectedPortal);
+    toast.success("Bem-vindo!");
+    nav({ to: path as "/app", replace: true });
   }
 
   async function handleGoogle() {
+    storeLoginPortal(portal);
     setGoogleLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth`,
+        redirectTo: `${window.location.origin}/auth?portal=${portal}`,
         queryParams: { access_type: "offline", prompt: "consent" },
       },
     });
@@ -107,7 +121,7 @@ function AuthPage() {
           </Link>
           <div className="mb-8 lg:hidden"><RoadHeroLogo /></div>
 
-          <Tabs value={portal} onValueChange={(v) => setPortal(v as Portal)}>
+          <Tabs value={portal} onValueChange={(v) => selectPortal(v as Portal)}>
             <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
               <TabsTrigger value="guardiao" className="gap-1 text-xs">
                 <Shield className="h-3.5 w-3.5" /> Guardião
@@ -163,17 +177,18 @@ function AuthPage() {
               <TabsTrigger value="login">Entrar</TabsTrigger>
               <TabsTrigger value="signup" disabled={portal !== "guardiao" && portal !== "parceiro"}>Criar conta</TabsTrigger>
             </TabsList>
-            <TabsContent value="login"><LoginForm onSuccess={afterLogin} /></TabsContent>
+            <TabsContent value="login"><LoginForm onSuccess={() => afterLogin(portal)} /></TabsContent>
             <TabsContent value="signup">
               <SignupForm
                 isPartnerSignup={portal === "parceiro"}
                 onSuccess={async () => {
                   if (portal === "parceiro") {
+                    storeLoginPortal("parceiro");
                     toast.success("Conta criada! Complete o cadastro da empresa.");
                     nav({ to: "/parceiro", replace: true });
                     return;
                   }
-                  await afterLogin();
+                  await afterLogin("guardiao");
                 }}
                 label={portal === "parceiro" ? "Criar conta de Parceiro" : "Criar conta de Guardião"}
               />
@@ -205,7 +220,6 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
     setLoading(false);
     if (error) return toast.error(authErrorMessage(error));
-    toast.success("Bem-vindo!");
     onSuccess();
   }
 

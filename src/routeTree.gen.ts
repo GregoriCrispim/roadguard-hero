@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AuthenticatedViagemRouteImport } from './routes/_authenticated/viagem'
 import { Route as AuthenticatedVeiculosRouteImport } from './routes/_authenticated/veiculos'
+import { Route as AuthenticatedSegurancaRouteImport } from './routes/_authenticated/seguranca'
 import { Route as AuthenticatedReportarRouteImport } from './routes/_authenticated/reportar'
 import { Route as AuthenticatedRecompensasRouteImport } from './routes/_authenticated/recompensas'
 import { Route as AuthenticatedRankingRouteImport } from './routes/_authenticated/ranking'
@@ -55,6 +56,11 @@ const AuthenticatedViagemRoute = AuthenticatedViagemRouteImport.update({
 const AuthenticatedVeiculosRoute = AuthenticatedVeiculosRouteImport.update({
   id: '/veiculos',
   path: '/veiculos',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSegurancaRoute = AuthenticatedSegurancaRouteImport.update({
+  id: '/seguranca',
+  path: '/seguranca',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedReportarRoute = AuthenticatedReportarRouteImport.update({
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/ranking': typeof AuthenticatedRankingRoute
   '/recompensas': typeof AuthenticatedRecompensasRoute
   '/reportar': typeof AuthenticatedReportarRoute
+  '/seguranca': typeof AuthenticatedSegurancaRoute
   '/veiculos': typeof AuthenticatedVeiculosRoute
   '/viagem': typeof AuthenticatedViagemRoute
   '/api/chat': typeof ApiChatRoute
@@ -154,6 +161,7 @@ export interface FileRoutesByTo {
   '/ranking': typeof AuthenticatedRankingRoute
   '/recompensas': typeof AuthenticatedRecompensasRoute
   '/reportar': typeof AuthenticatedReportarRoute
+  '/seguranca': typeof AuthenticatedSegurancaRoute
   '/veiculos': typeof AuthenticatedVeiculosRoute
   '/viagem': typeof AuthenticatedViagemRoute
   '/api/chat': typeof ApiChatRoute
@@ -175,6 +183,7 @@ export interface FileRoutesById {
   '/_authenticated/ranking': typeof AuthenticatedRankingRoute
   '/_authenticated/recompensas': typeof AuthenticatedRecompensasRoute
   '/_authenticated/reportar': typeof AuthenticatedReportarRoute
+  '/_authenticated/seguranca': typeof AuthenticatedSegurancaRoute
   '/_authenticated/veiculos': typeof AuthenticatedVeiculosRoute
   '/_authenticated/viagem': typeof AuthenticatedViagemRoute
   '/api/chat': typeof ApiChatRoute
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/ranking'
     | '/recompensas'
     | '/reportar'
+    | '/seguranca'
     | '/veiculos'
     | '/viagem'
     | '/api/chat'
@@ -215,6 +225,7 @@ export interface FileRouteTypes {
     | '/ranking'
     | '/recompensas'
     | '/reportar'
+    | '/seguranca'
     | '/veiculos'
     | '/viagem'
     | '/api/chat'
@@ -235,6 +246,7 @@ export interface FileRouteTypes {
     | '/_authenticated/ranking'
     | '/_authenticated/recompensas'
     | '/_authenticated/reportar'
+    | '/_authenticated/seguranca'
     | '/_authenticated/veiculos'
     | '/_authenticated/viagem'
     | '/api/chat'
@@ -289,6 +301,13 @@ declare module '@tanstack/react-router' {
       path: '/veiculos'
       fullPath: '/veiculos'
       preLoaderRoute: typeof AuthenticatedVeiculosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/seguranca': {
+      id: '/_authenticated/seguranca'
+      path: '/seguranca'
+      fullPath: '/seguranca'
+      preLoaderRoute: typeof AuthenticatedSegurancaRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/reportar': {
@@ -391,6 +410,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRankingRoute: typeof AuthenticatedRankingRoute
   AuthenticatedRecompensasRoute: typeof AuthenticatedRecompensasRoute
   AuthenticatedReportarRoute: typeof AuthenticatedReportarRoute
+  AuthenticatedSegurancaRoute: typeof AuthenticatedSegurancaRoute
   AuthenticatedVeiculosRoute: typeof AuthenticatedVeiculosRoute
   AuthenticatedViagemRoute: typeof AuthenticatedViagemRoute
 }
@@ -408,6 +428,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRankingRoute: AuthenticatedRankingRoute,
   AuthenticatedRecompensasRoute: AuthenticatedRecompensasRoute,
   AuthenticatedReportarRoute: AuthenticatedReportarRoute,
+  AuthenticatedSegurancaRoute: AuthenticatedSegurancaRoute,
   AuthenticatedVeiculosRoute: AuthenticatedVeiculosRoute,
   AuthenticatedViagemRoute: AuthenticatedViagemRoute,
 }

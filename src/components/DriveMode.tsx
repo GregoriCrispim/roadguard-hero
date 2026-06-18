@@ -1170,6 +1170,7 @@ export function DriveMode() {
             { to: "/reportar", label: "Reportar manual" },
             { to: "/ranking", label: "Ranking" },
             { to: "/recompensas", label: "Recompensas" },
+            { to: "/seguranca", label: "Câmera de Segurança" },
             { to: "/guardiao", label: "Guardião IA" },
           ].map((item) => (
             <Link

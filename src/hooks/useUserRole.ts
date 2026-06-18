@@ -5,6 +5,76 @@ import { normalizeCoordinates } from "@/lib/geo-scope";
 
 export type AppRole = "user" | "concessionaria" | "admin" | "abcr" | "partner";
 
+export type Portal = "guardiao" | "concessionaria" | "abcr" | "parceiro";
+
+export const PORTAL_STORAGE_KEY = "roadhero_login_portal";
+
+const PORTAL_PATH: Record<Portal, string> = {
+  guardiao: "/app",
+  concessionaria: "/concessionaria",
+  parceiro: "/parceiro",
+  abcr: "/abcr",
+};
+
+const PORTAL_LABEL: Record<Portal, string> = {
+  guardiao: "Guardião",
+  concessionaria: "Concessionária",
+  parceiro: "Parceiro",
+  abcr: "ABCR",
+};
+
+export function portalToPath(portal: Portal): string {
+  return PORTAL_PATH[portal];
+}
+
+export function portalLabel(portal: Portal): string {
+  return PORTAL_LABEL[portal];
+}
+
+export function parsePortal(value: string | null | undefined): Portal {
+  if (value === "concessionaria" || value === "parceiro" || value === "abcr") return value;
+  return "guardiao";
+}
+
+export function canAccessPortal(roles: AppRole[], portal: Portal): boolean {
+  if (roles.includes("admin")) return true;
+  switch (portal) {
+    case "guardiao":
+      return true;
+    case "concessionaria":
+      return roles.includes("concessionaria");
+    case "parceiro":
+      return roles.includes("partner");
+    case "abcr":
+      return roles.includes("abcr");
+  }
+}
+
+export async function fetchUserRoles(): Promise<AppRole[]> {
+  const { data: u } = await supabase.auth.getUser();
+  if (!u.user) return [];
+  const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", u.user.id);
+  if (error) throw error;
+  return (data ?? []).map((r) => r.role as AppRole);
+}
+
+export async function resolvePathForPortal(portal: Portal): Promise<string | null> {
+  const roles = await fetchUserRoles();
+  if (roles.length === 0) return null;
+  if (!canAccessPortal(roles, portal)) return null;
+  return portalToPath(portal);
+}
+
+export function storeLoginPortal(portal: Portal) {
+  if (typeof sessionStorage === "undefined") return;
+  sessionStorage.setItem(PORTAL_STORAGE_KEY, portal);
+}
+
+export function readStoredLoginPortal(): Portal | null {
+  if (typeof sessionStorage === "undefined") return null;
+  return parsePortal(sessionStorage.getItem(PORTAL_STORAGE_KEY));
+}
+
 export type UserRoleRow = {
   role: AppRole;
 };
@@ -101,18 +171,9 @@ export function useIsAbcr() {
   return { isAbcr, roles, ...rest };
 }
 
+/** Redirecionamento legado por prioridade de papel (evitar em fluxos de login). */
 export async function resolvePostLoginPath(): Promise<string> {
-  const { data: u } = await supabase.auth.getUser();
-  if (!u.user) return "/auth";
-
-  const { data: roles } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", u.user.id);
-
-  const roleList = (roles ?? []).map((r) => r.role as AppRole);
-  if (roleList.includes("abcr") || roleList.includes("admin")) return "/abcr";
-  if (roleList.includes("concessionaria")) return "/concessionaria";
-  if (roleList.includes("partner")) return "/parceiro";
-  return "/app";
+  const portal = readStoredLoginPortal() ?? "guardiao";
+  const path = await resolvePathForPortal(portal);
+  return path ?? portalToPath("guardiao");
 }

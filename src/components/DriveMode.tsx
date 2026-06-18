@@ -86,12 +86,12 @@ export function DriveMode() {
   const geo = useGeolocation();
   const speedKmh = useSpeedTracker(geo.coords);
   const voice = useSpeechRecognition();
-  const camera = useSecurityCamera(phase === "driving" && navigationActive);
 
   const [phase, setPhase] = useState<TripPhase>(
     boot ? (boot.navigationStarted ? "driving" : "preview") : "location",
   );
   const [navigationActive, setNavigationActive] = useState(boot?.navigationStarted ?? false);
+  const camera = useSecurityCamera(phase === "driving" && navigationActive);
   const [tripId, setTripId] = useState<string | null>(boot?.tripId ?? null);
   const [destinationQuery, setDestinationQuery] = useState(
     boot ? (boot.destination.label.split(",")[0] ?? boot.destination.label) : "",

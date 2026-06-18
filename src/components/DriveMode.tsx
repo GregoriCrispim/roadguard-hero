@@ -72,7 +72,7 @@ function getBootTrip(): StoredTrip | null {
 
 const MIC_LABELS = {
   listening: "Microfone ativo — ouvindo",
-  capturing: "Gravando reporte — fale e pause 5s para enviar",
+  capturing: "Gravando reporte — fale e pause 7s para enviar",
   idle: "Toque no microfone para reportar",
   prompt: "Solicitando permissão...",
   denied: "Permissão negada — toque para tentar de novo",

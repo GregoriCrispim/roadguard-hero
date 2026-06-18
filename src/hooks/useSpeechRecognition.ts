@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { buildLiveTranscript, mergeTranscriptParts } from "@/lib/transcript-utils";
 
 type SpeechRecognitionCtor = new () => SpeechRecognition;
 
 export type MicStatus = "unsupported" | "idle" | "listening" | "error" | "denied" | "prompt" | "capturing";
 
-const SILENCE_MS = 5000;
+const SILENCE_MS = 7000;
 
 function getSpeechRecognition(): SpeechRecognitionCtor | null {
   if (typeof window === "undefined") return null;
@@ -36,6 +37,7 @@ export function useSpeechRecognition(lang = "pt-BR") {
   const shouldListenRef = useRef(false);
   const reportModeRef = useRef(false);
   const finalPartsRef = useRef<string[]>([]);
+  const processedCountRef = useRef(0);
   const silenceTimerRef = useRef<number | null>(null);
 
   const clearSilenceTimer = useCallback(() => {
@@ -51,8 +53,9 @@ export function useSpeechRecognition(lang = "pt-BR") {
     shouldListenRef.current = false;
     clearSilenceTimer();
 
-    const text = finalPartsRef.current.join(" ").trim();
+    const text = mergeTranscriptParts(finalPartsRef.current);
     finalPartsRef.current = [];
+    processedCountRef.current = 0;
     setReportTranscript("");
 
     try {
@@ -99,6 +102,7 @@ export function useSpeechRecognition(lang = "pt-BR") {
 
     recognition.onresult = (event) => {
       let interim = "";
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0]?.transcript?.trim() ?? "";
@@ -106,8 +110,11 @@ export function useSpeechRecognition(lang = "pt-BR") {
 
         if (reportModeRef.current) {
           if (result.isFinal) {
-            finalPartsRef.current.push(text);
-            resetSilenceTimer();
+            if (i >= processedCountRef.current) {
+              finalPartsRef.current.push(text);
+              processedCountRef.current = i + 1;
+              resetSilenceTimer();
+            }
           } else {
             interim = text;
           }
@@ -118,8 +125,7 @@ export function useSpeechRecognition(lang = "pt-BR") {
       }
 
       if (reportModeRef.current) {
-        const full = [...finalPartsRef.current, interim].filter(Boolean).join(" ");
-        setReportTranscript(full);
+        setReportTranscript(buildLiveTranscript(finalPartsRef.current, interim));
         if (interim) resetSilenceTimer();
       }
     };
@@ -128,6 +134,14 @@ export function useSpeechRecognition(lang = "pt-BR") {
       setStatus(reportModeRef.current ? "capturing" : "listening");
 
     recognition.onend = () => {
+      if (shouldListenRef.current && reportModeRef.current) {
+        window.setTimeout(() => {
+          if (shouldListenRef.current && reportModeRef.current) {
+            startRecognition();
+          }
+        }, 150);
+        return;
+      }
       if (shouldListenRef.current && !reportModeRef.current) {
         window.setTimeout(() => startRecognition(), 300);
       } else if (!reportModeRef.current) {
@@ -149,6 +163,12 @@ export function useSpeechRecognition(lang = "pt-BR") {
         return;
       }
       if (err === "aborted") return;
+      if (reportModeRef.current && (err === "network" || err === "audio-capture")) {
+        window.setTimeout(() => {
+          if (shouldListenRef.current && reportModeRef.current) startRecognition();
+        }, 500);
+        return;
+      }
       setStatus("error");
     };
 
@@ -206,6 +226,7 @@ export function useSpeechRecognition(lang = "pt-BR") {
       if (!recognitionRef.current) return false;
 
       finalPartsRef.current = [];
+      processedCountRef.current = 0;
       setReportTranscript("");
       reportModeRef.current = true;
       onReportCompleteRef.current = onComplete;

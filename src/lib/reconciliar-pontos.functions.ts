@@ -2,18 +2,39 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { pontosFromGravidade } from "@/lib/pontos";
 
+type PendingReport = {
+  id: string;
+  gravidade: string | null;
+  pontos_concedidos?: number | null;
+};
+
 /** Corrige reportes validados que não concederam pontos (ex.: falha silenciosa anterior). */
 export const reconciliarPontos = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: pendentes, error: listErr } = await context.supabase
+    let pendentes: PendingReport[] | null = null;
+
+    const withCol = await context.supabase
       .from("reports")
       .select("id, gravidade, pontos_concedidos")
       .eq("user_id", context.userId)
       .eq("status", "validado")
       .eq("pontos_concedidos", 0);
 
-    if (listErr) throw new Error(`Falha ao buscar reportes: ${listErr.message}`);
+    if (!withCol.error) {
+      pendentes = withCol.data;
+    } else if (withCol.error.message.includes("pontos_concedidos")) {
+      const fallback = await context.supabase
+        .from("reports")
+        .select("id, gravidade")
+        .eq("user_id", context.userId)
+        .eq("status", "validado");
+      if (fallback.error) throw new Error(`Falha ao buscar reportes: ${fallback.error.message}`);
+      pendentes = fallback.data?.map((r) => ({ ...r, pontos_concedidos: 0 })) ?? [];
+    } else {
+      throw new Error(`Falha ao buscar reportes: ${withCol.error.message}`);
+    }
+
     if (!pendentes?.length) return { corrigidos: 0, pontosAdicionados: 0 };
 
     let pontosAdicionados = 0;
@@ -44,7 +65,7 @@ export const reconciliarPontos = createServerFn({ method: "POST" })
         .eq("id", report.id)
         .eq("user_id", context.userId);
 
-      if (markErr) continue;
+      if (markErr && !markErr.message.includes("pontos_concedidos")) continue;
 
       pontosAdicionados += pontos;
     }
